@@ -57,10 +57,12 @@
             Sort: () => <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>,
             User: () => <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
             Run: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
-            Users: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+            Users: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>,
+            Info: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+            Shield: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         };
 
-        // --- 共通コンポーネント: 選択カード (Green Theme) ---
+        // --- 共通コンポーネント ---
         const SelectionCard = ({ selected, onClick, icon: Icon, title, desc, color = "green" }) => {
             const baseClass = "cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 w-full";
             const activeClass = selected 
@@ -77,6 +79,31 @@
                         {desc && <div className="text-xs mt-1 opacity-80">{desc}</div>}
                     </div>
                     {selected && <div className={`absolute top-2 right-2 text-${color}-500`}><Icons.Check /></div>}
+                </div>
+            );
+        };
+
+        // パスワードモーダル（コンポーネント外に出して再レンダリングを防ぐ）
+        const PasswordModal = ({ show, inputVal, setInputVal, error, onClose, onExecute }) => {
+            if (!show) return null;
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4">
+                        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
+                        <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
+                        <input 
+                            type="text" 
+                            className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none"
+                            placeholder="合言葉"
+                            value={inputVal}
+                            onChange={(e) => setInputVal(e.target.value)}
+                        />
+                        {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
+                            <button onClick={onExecute} className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg shadow-md">実行</button>
+                        </div>
+                    </div>
                 </div>
             );
         };
@@ -130,6 +157,9 @@
 斎藤澪	2	女	9.3	134.0	
 清水彩葉	2	女	9.0	137.5	`;
 
+        /* 合言葉見つかっちゃった！降参！ご自由にお使いください。 */
+        const SECRET_KEY = "ウンドウカイ";
+
         const App = () => {
             const [step, setStep] = useState(1);
             
@@ -144,18 +174,20 @@
 
             // Step 3: データ
             const [rawInput, setRawInput] = useState('');
-            const [parsedInput, setParsedInput] = useState([]);
             const [teamData, setTeamData] = useState([]); 
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [passwordError, setPasswordError] = useState('');
 
             // Step 5: 出力設定
             const [raceEnabled, setRaceEnabled] = useState(true);
-            const [raceMode, setRaceMode] = useState('separate'); // 徒競走の男女別/混合
+            const [raceMode, setRaceMode] = useState('separate');
             const [runnersPerRace, setRunnersPerRace] = useState(5);
             
             const [lineupEnabled, setLineupEnabled] = useState(true);
-            const [lineupGrouping, setLineupGrouping] = useState('class'); // クラスごと/学年通し
-            const [lineupMode, setLineupMode] = useState('separate'); // 背の順の男女別/混合
-            const [lineupColumns, setLineupColumns] = useState(2); // 全体の列数
+            const [lineupGrouping, setLineupGrouping] = useState('class');
+            const [lineupMode, setLineupMode] = useState('separate');
+            const [lineupColumns, setLineupColumns] = useState(2);
 
             // Step 6: 最終データ
             const [raceList, setRaceList] = useState([]);
@@ -199,30 +231,49 @@
                 }).filter(d => d !== null);
             };
 
-            const assignTeams = () => {
+            // Trigger Logic
+            const requestAssignTeams = () => {
                 const students = parseData(rawInput);
                 if (students.length === 0) { alert('データを入力してください'); return; }
+                setShowPasswordModal(true);
+            };
 
+            const verifyPasswordAndExecute = () => {
+                if (passwordInput === SECRET_KEY) {
+                    setShowPasswordModal(false);
+                    setPasswordError('');
+                    setPasswordInput('');
+                    assignTeams();
+                } else {
+                    setPasswordError('合言葉が違います');
+                }
+            };
+
+            const assignTeams = () => {
+                const students = parseData(rawInput);
                 const getSorter = () => criteria === 'time' ? (a, b) => a.time - b.time : (a, b) => a.height - b.height;
 
                 const applyPattern = (list, patternType) => {
                     const sortedList = [...list].sort(getSorter());
+                    let patternCounter = 0;
+
                     sortedList.forEach((student, index) => {
-                        let autoTeam = '';
-                        const mod4 = index % 4;
-                        const mod2 = index % 2;
-                        switch (patternType) {
-                            case 'abba': autoTeam = (mod4 === 0 || mod4 === 3) ? '赤' : '白'; break;
-                            case 'baab': autoTeam = (mod4 === 0 || mod4 === 3) ? '白' : '赤'; break;
-                            case 'abab': autoTeam = (mod2 === 0) ? '赤' : '白'; break;
-                            case 'baba': autoTeam = (mod2 === 0) ? '白' : '赤'; break;
-                        }
-                        if (student.fixedTeam) {
-                            student.team = student.fixedTeam;
+                        if (student.fixedTeam && student.fixedTeam.trim() !== '') {
+                            student.team = student.fixedTeam.trim();
                             student.isFixed = true;
                         } else {
+                            let autoTeam = '';
+                            const mod4 = patternCounter % 4;
+                            const mod2 = patternCounter % 2;
+                            switch (patternType) {
+                                case 'abba': autoTeam = (mod4 === 0 || mod4 === 3) ? '赤' : '白'; break;
+                                case 'baab': autoTeam = (mod4 === 0 || mod4 === 3) ? '白' : '赤'; break;
+                                case 'abab': autoTeam = (mod2 === 0) ? '赤' : '白'; break;
+                                case 'baba': autoTeam = (mod2 === 0) ? '白' : '赤'; break;
+                            }
                             student.team = autoTeam;
                             student.isFixed = false;
+                            patternCounter++;
                         }
                         student.rankInGroup = index + 1;
                     });
@@ -255,11 +306,10 @@
             };
 
             const generateFinalOutput = () => {
-                // 1. Race Logic
                 let races = [];
                 if (raceEnabled) {
                     const groups = [];
-                    if (raceMode === 'separate') { // Step5で選択したモードを使用
+                    if (raceMode === 'separate') {
                         groups.push({ name: '男子', list: teamData.filter(s => /男|M/i.test(s.gender)) });
                         groups.push({ name: '女子', list: teamData.filter(s => !/男|M/i.test(s.gender)) });
                     } else {
@@ -315,33 +365,27 @@
                 }
                 setRaceList(races);
 
-                // 2. Lineup Logic
                 let lineups = [];
                 if (lineupEnabled) {
                     const sortFunc = (a, b) => {
-                        // クラスごとならクラス順
                         if (lineupGrouping === 'class' && a.classNum !== b.classNum) return a.classNum - b.classNum;
-                        
-                        // 男女別なら性別順 (男子->女子)
                         if (lineupMode === 'separate') {
                             const aIsBoy = /男|M/i.test(a.gender);
                             const bIsBoy = /男|M/i.test(b.gender);
                             if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
                         }
-                        
-                        // チーム順 (赤->白)
                         if (a.team !== b.team) return a.team === '赤' ? -1 : 1;
-                        
-                        // 最後に身長順
+                        const aIsBoy = /男|M/i.test(a.gender);
+                        const bIsBoy = /男|M/i.test(b.gender);
+                        if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
                         return a.height - b.height;
                     };
 
                     const sortedRaw = [...teamData].sort(sortFunc);
                     
-                    // グループキー作成
                     const grouped = {};
                     sortedRaw.forEach(s => {
-                        let key = s.team; // 常にチームでは分ける
+                        let key = s.team; 
                         if (lineupGrouping === 'class') key += `_${s.classNum}組`;
                         else key += `_全体`; 
                         
@@ -349,19 +393,12 @@
                         grouped[key].push(s);
                     });
 
-                    // 各グループ内で列計算
                     Object.keys(grouped).forEach(key => {
                         const members = grouped[key];
                         const groupName = key.replace('_', ' ');
 
                         if (lineupMode === 'separate') {
-                            // 男女別列の場合
-                            // 全体の列数 lineupColumns (例: 2列)
-                            // 男子の列数 = Math.floor(2 / 2) = 1
-                            // 女子の列数 = 2 - 1 = 1
-                            // もし4列なら 男2, 女2
-                            
-                            const boysCols = Math.floor(lineupColumns / 2) || 1; // 最低1列
+                            const boysCols = Math.floor(lineupColumns / 2) || 1;
                             const girlsCols = lineupColumns - boysCols || 1;
 
                             const boys = members.filter(s => /男|M/i.test(s.gender));
@@ -370,7 +407,7 @@
                             let bCount = 0;
                             boys.forEach(s => {
                                 s.groupKey = groupName;
-                                s.column = (bCount % boysCols) + 1; // 1 ~ boysCols
+                                s.column = (bCount % boysCols) + 1; 
                                 s.row = Math.floor(bCount / boysCols) + 1;
                                 lineups.push(s);
                                 bCount++;
@@ -379,14 +416,13 @@
                             let gCount = 0;
                             girls.forEach(s => {
                                 s.groupKey = groupName;
-                                s.column = (gCount % girlsCols) + 1 + boysCols; // boysCols+1 ~ total
+                                s.column = (gCount % girlsCols) + 1 + boysCols; 
                                 s.row = Math.floor(gCount / girlsCols) + 1;
                                 lineups.push(s);
                                 gCount++;
                             });
 
                         } else {
-                            // 男女混合列の場合
                             members.forEach((s, i) => {
                                 s.groupKey = groupName;
                                 s.column = (i % lineupColumns) + 1;
@@ -401,7 +437,6 @@
             };
 
             // --- UI Components ---
-            
             const PreviewTable = ({ inputData }) => {
                 const parsed = parseData(inputData);
                 if (parsed.length === 0) return null;
@@ -410,7 +445,7 @@
                         <div className="bg-green-50 p-3 text-green-800 font-bold border-b border-green-200 flex items-center gap-2">
                             <Icons.Check /> プレビュー (全{parsed.length}名)
                         </div>
-                        <div className="max-h-40 overflow-y-auto custom-scrollbar">
+                        <div className="max-h-96 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left">
                                 <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase">
                                     <tr><th className="p-2 pl-4">氏名</th><th className="p-2">クラス</th><th className="p-2">性別</th><th className="p-2">タイム</th><th className="p-2">身長</th><th className="p-2 text-red-600">指定</th></tr>
@@ -491,17 +526,11 @@
                     groups.forEach(grp => {
                         const members = lineupList.filter(l => l.groupKey === grp);
                         const sheetData = [];
-                        
-                        // 行（深さ）の最大値を探す
                         const maxRow = Math.max(...members.map(m => m.row));
-                        
                         for(let r = 1; r <= maxRow; r++) {
                             const rowObj = {};
-                            // その行にいるメンバーを列ごとに配置
                             const rowMembers = members.filter(m => m.row === r);
-                            rowMembers.forEach(m => {
-                                rowObj[`列${m.column}`] = m.name;
-                            });
+                            rowMembers.forEach(m => { rowObj[`列${m.column}`] = m.name; });
                             sheetData.push(rowObj);
                         }
                         const ws = XLSX.utils.json_to_sheet(sheetData);
@@ -607,11 +636,11 @@
 
             return (
                 <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto flex flex-col">
-                    <header className="mb-8 text-center">
+                    <header className="mb-8 text-center animate-fade-in">
                         <h1 className="text-3xl font-black text-green-800 mb-2 tracking-tight flex items-center justify-center gap-3">
                             <span className="text-4xl">🏃</span> 運動会 組み分けマスター
                         </h1>
-                        <p className="text-green-600 text-sm">誰でも簡単に、公平なチーム分けとプログラム編成を。</p>
+                        <p className="text-green-600 text-sm">入力データは端末内でのみ処理され、外部サーバーには送信されません。</p>
                     </header>
 
                     <StepIndicator />
@@ -686,14 +715,15 @@
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-4xl mx-auto space-y-6">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.User/> データの入力</h2>
                                 <div className="flex flex-wrap gap-4 items-center justify-between mb-4 bg-green-50 p-4 rounded-lg border border-green-100">
-                                    <div className="text-sm text-green-900">
+                                    <div className="text-sm text-green-900 flex-1 min-w-[200px]">
                                         <p className="font-bold mb-1">【Excelからの列コピー順序】</p>
                                         <p className="font-mono text-xs md:text-sm whitespace-nowrap overflow-x-auto">A:氏名 | B:クラス | C:性別 | D:タイム | E:身長 | <span className="text-red-600 font-bold">F:チーム指定</span></p>
                                         <p className="text-xs text-red-500 mt-1 font-bold">※F列に『赤』『白』と入力すると、自動振り分けされずにそのチームになります。</p>
+                                        <p className="text-xs text-slate-500 mt-1">※入力欄で列がズレて見えても、下のプレビュー表が合っていれば問題ありません。</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>setRawInput(SAMPLE_DATA)} className="text-xs bg-white text-green-600 border border-green-200 px-3 py-2 rounded shadow-sm hover:bg-green-50 font-bold">サンプル入力</button>
-                                        <button onClick={downloadTemplate} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-2 rounded shadow-sm flex items-center gap-1 font-bold"><Icons.Download/> 雛形DL</button>
+                                        <button onClick={downloadTemplate} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-2 rounded shadow-sm flex items-center gap-1 font-bold"><Icons.Download/> 📄 入力用データをダウンロード</button>
                                     </div>
                                 </div>
                                 <div className="border-2 border-green-200 rounded-lg overflow-hidden focus-within:border-green-400 transition-colors">
@@ -702,7 +732,7 @@
                                 <PreviewTable inputData={rawInput} />
                                 <div className="flex justify-between pt-4">
                                     <button onClick={()=>setStep(2)} className="text-green-600 font-bold px-6 py-3 rounded-full hover:bg-green-50 flex items-center gap-2"><Icons.ArrowLeft/> 戻る</button>
-                                    <button onClick={assignTeams} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-full shadow-lg transition transform hover:-translate-y-1 flex items-center gap-2">組み分け実行 <Icons.ArrowRight/></button>
+                                    <button onClick={requestAssignTeams} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-full shadow-lg transition transform hover:-translate-y-1 flex items-center gap-2">組み分け実行 <Icons.ArrowRight/></button>
                                 </div>
                             </div>
                         )}
@@ -814,6 +844,14 @@
                             </div>
                         )}
                     </div>
+                    {showPasswordModal && <PasswordModal 
+                        show={showPasswordModal}
+                        inputVal={passwordInput}
+                        setInputVal={setPasswordInput}
+                        error={passwordError}
+                        onClose={() => setShowPasswordModal(false)}
+                        onExecute={verifyPasswordAndExecute}
+                    />}
                 </div>
             );
         };
