@@ -83,31 +83,6 @@
             );
         };
 
-        // パスワードモーダル（コンポーネント外に出して再レンダリングを防ぐ）
-        const PasswordModal = ({ show, inputVal, setInputVal, error, onClose, onExecute }) => {
-            if (!show) return null;
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4">
-                        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
-                        <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
-                        <input 
-                            type="text" 
-                            className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none"
-                            placeholder="合言葉"
-                            value={inputVal}
-                            onChange={(e) => setInputVal(e.target.value)}
-                        />
-                        {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
-                        <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
-                            <button onClick={onExecute} className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg shadow-md">実行</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
         // --- 定数・サンプルデータ ---
         const PATTERNS = [
             { id: 'abba', name: '赤 白 白 赤', sub: 'ジグザグ・赤始', desc: '1位:赤, 2位:白, 3位:白, 4位:赤...' },
@@ -160,6 +135,59 @@
         /* 合言葉見つかっちゃった！降参！ご自由にお使いください。 */
         const SECRET_KEY = "ウンドウカイ";
 
+        // パスワードモーダル（独立コンポーネント化）
+        const PasswordModal = ({ show, onClose, onSuccess }) => {
+            const [inputVal, setInputVal] = useState('');
+            const [error, setError] = useState('');
+
+            // モーダルが開かれたときにフォーカスする
+            const inputRef = useRef(null);
+            useEffect(() => {
+                if (show && inputRef.current) {
+                    inputRef.current.focus();
+                }
+            }, [show]);
+
+            if (!show) return null;
+
+            const handleExecute = () => {
+                if (inputVal === SECRET_KEY) {
+                    onSuccess();
+                } else {
+                    setError('合言葉が違います');
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') {
+                    handleExecute();
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
+                        <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
+                        <input 
+                            ref={inputRef}
+                            type="text" 
+                            className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none"
+                            placeholder="合言葉"
+                            value={inputVal}
+                            onChange={(e) => setInputVal(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                        />
+                        {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
+                            <button onClick={handleExecute} className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg shadow-md">実行</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const App = () => {
             const [step, setStep] = useState(1);
             
@@ -176,8 +204,6 @@
             const [rawInput, setRawInput] = useState('');
             const [teamData, setTeamData] = useState([]); 
             const [showPasswordModal, setShowPasswordModal] = useState(false);
-            const [passwordInput, setPasswordInput] = useState('');
-            const [passwordError, setPasswordError] = useState('');
 
             // Step 5: 出力設定
             const [raceEnabled, setRaceEnabled] = useState(true);
@@ -238,15 +264,9 @@
                 setShowPasswordModal(true);
             };
 
-            const verifyPasswordAndExecute = () => {
-                if (passwordInput === SECRET_KEY) {
-                    setShowPasswordModal(false);
-                    setPasswordError('');
-                    setPasswordInput('');
-                    assignTeams();
-                } else {
-                    setPasswordError('合言葉が違います');
-                }
+            const onPasswordSuccess = () => {
+                setShowPasswordModal(false);
+                assignTeams();
             };
 
             const assignTeams = () => {
@@ -306,6 +326,7 @@
             };
 
             const generateFinalOutput = () => {
+                // 1. Race Logic
                 let races = [];
                 if (raceEnabled) {
                     const groups = [];
@@ -365,6 +386,7 @@
                 }
                 setRaceList(races);
 
+                // 2. Lineup Logic
                 let lineups = [];
                 if (lineupEnabled) {
                     const sortFunc = (a, b) => {
@@ -437,6 +459,7 @@
             };
 
             // --- UI Components ---
+            
             const PreviewTable = ({ inputData }) => {
                 const parsed = parseData(inputData);
                 if (parsed.length === 0) return null;
@@ -846,11 +869,8 @@
                     </div>
                     {showPasswordModal && <PasswordModal 
                         show={showPasswordModal}
-                        inputVal={passwordInput}
-                        setInputVal={setPasswordInput}
-                        error={passwordError}
                         onClose={() => setShowPasswordModal(false)}
-                        onExecute={verifyPasswordAndExecute}
+                        onSuccess={onPasswordSuccess}
                     />}
                 </div>
             );
