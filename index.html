@@ -62,7 +62,7 @@
             Shield: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         };
 
-        // --- 共通コンポーネント ---
+        // --- 共通コンポーネント: 選択カード (Green Theme) ---
         const SelectionCard = ({ selected, onClick, icon: Icon, title, desc, color = "green" }) => {
             const baseClass = "cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 w-full";
             const activeClass = selected 
@@ -82,58 +82,6 @@
                 </div>
             );
         };
-
-        // --- 定数・サンプルデータ ---
-        const PATTERNS = [
-            { id: 'abba', name: '赤 白 白 赤', sub: 'ジグザグ・赤始', desc: '1位:赤, 2位:白, 3位:白, 4位:赤...' },
-            { id: 'baab', name: '白 赤 赤 白', sub: 'ジグザグ・白始', desc: '1位:白, 2位:赤, 3位:赤, 4位:白...' },
-            { id: 'abab', name: '赤 白 赤 白', sub: '順送り・赤始', desc: '1位:赤, 2位:白, 3位:赤, 4位:白...' },
-            { id: 'baba', name: '白 赤 白 赤', sub: '順送り・白始', desc: '1位:白, 2位:赤, 3位:白, 4位:赤...' },
-        ];
-
-        const SAMPLE_DATA = `佐藤太郎	1	男	8.5	142.5	
-鈴木一郎	1	男	7.8	145.0	
-高橋健太	1	男	9.1	138.5	
-田中大輔	1	男	8.3	140.0	
-伊藤翔	1	男	7.5	148.0	赤
-渡辺拓海	1	男	8.9	135.5	
-山本涼太	1	男	9.5	132.0	
-中村陸	1	男	8.0	144.5	
-小林蓮	1	男	8.6	139.0	
-加藤陽向	1	男	9.0	136.0	
-佐藤花子	1	女	9.2	135.0	
-鈴木愛	1	女	8.8	140.5	
-高橋結衣	1	女	9.5	130.0	
-田中美咲	1	女	8.5	142.0	
-伊藤葵	1	女	8.0	146.0	
-渡辺凛	1	女	9.8	128.5	
-山本さくら	1	女	9.0	138.0	白
-中村優奈	1	女	8.7	141.5	
-小林陽菜	1	女	9.3	133.0	
-加藤美優	1	女	8.9	139.5	
-吉田大輝	2	男	8.2	141.0	
-山田蒼大	2	男	7.9	146.5	
-佐々木瑛太	2	男	8.8	137.0	
-山口樹	2	男	8.4	143.0	
-松本湊	2	男	7.6	149.0	
-井上悠真	2	男	9.2	134.5	
-木村朝陽	2	男	9.4	131.0	
-林大翔	2	男	8.1	145.0	
-斎藤新	2	男	8.7	138.0	
-清水颯太	2	男	9.1	135.5	
-吉田結菜	2	女	9.1	136.0	
-山田莉子	2	女	8.6	143.0	
-佐々木芽依	2	女	9.4	131.5	
-山口心春	2	女	8.4	144.0	
-松本美月	2	女	8.1	147.5	
-井上心優	2	女	9.7	129.0	
-木村愛莉	2	女	8.9	139.0	
-林杏奈	2	女	8.8	140.0	
-斎藤澪	2	女	9.3	134.0	
-清水彩葉	2	女	9.0	137.5	`;
-
-        /* 合言葉見つかっちゃった！降参！ご自由にお使いください。 */
-        const SECRET_KEY = "ウンドウカイ";
 
         // パスワードモーダル（独立コンポーネント化）
         const PasswordModal = ({ show, onClose, onSuccess }) => {
@@ -390,24 +338,29 @@
                 let lineups = [];
                 if (lineupEnabled) {
                     const sortFunc = (a, b) => {
+                        // クラスごとならクラス順
                         if (lineupGrouping === 'class' && a.classNum !== b.classNum) return a.classNum - b.classNum;
+                        
+                        // 男女別なら性別順 (男子->女子)
                         if (lineupMode === 'separate') {
                             const aIsBoy = /男|M/i.test(a.gender);
                             const bIsBoy = /男|M/i.test(b.gender);
                             if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
                         }
+                        
+                        // チーム順 (赤->白)
                         if (a.team !== b.team) return a.team === '赤' ? -1 : 1;
-                        const aIsBoy = /男|M/i.test(a.gender);
-                        const bIsBoy = /男|M/i.test(b.gender);
-                        if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
+                        
+                        // 最後に身長順
                         return a.height - b.height;
                     };
 
                     const sortedRaw = [...teamData].sort(sortFunc);
                     
+                    // グループキー作成
                     const grouped = {};
                     sortedRaw.forEach(s => {
-                        let key = s.team; 
+                        let key = s.team; // 常にチームでは分ける
                         if (lineupGrouping === 'class') key += `_${s.classNum}組`;
                         else key += `_全体`; 
                         
@@ -415,12 +368,19 @@
                         grouped[key].push(s);
                     });
 
+                    // 各グループ内で列計算
                     Object.keys(grouped).forEach(key => {
                         const members = grouped[key];
                         const groupName = key.replace('_', ' ');
 
                         if (lineupMode === 'separate') {
-                            const boysCols = Math.floor(lineupColumns / 2) || 1;
+                            // 男女別列の場合
+                            // 全体の列数 lineupColumns (例: 2列)
+                            // 男子の列数 = Math.floor(2 / 2) = 1
+                            // 女子の列数 = 2 - 1 = 1
+                            // もし4列なら 男2, 女2
+                            
+                            const boysCols = Math.floor(lineupColumns / 2) || 1; // 最低1列
                             const girlsCols = lineupColumns - boysCols || 1;
 
                             const boys = members.filter(s => /男|M/i.test(s.gender));
@@ -429,7 +389,7 @@
                             let bCount = 0;
                             boys.forEach(s => {
                                 s.groupKey = groupName;
-                                s.column = (bCount % boysCols) + 1; 
+                                s.column = (bCount % boysCols) + 1; // 1 ~ boysCols
                                 s.row = Math.floor(bCount / boysCols) + 1;
                                 lineups.push(s);
                                 bCount++;
@@ -438,13 +398,14 @@
                             let gCount = 0;
                             girls.forEach(s => {
                                 s.groupKey = groupName;
-                                s.column = (gCount % girlsCols) + 1 + boysCols; 
+                                s.column = (gCount % girlsCols) + 1 + boysCols; // boysCols+1 ~ total
                                 s.row = Math.floor(gCount / girlsCols) + 1;
                                 lineups.push(s);
                                 gCount++;
                             });
 
                         } else {
+                            // 男女混合列の場合
                             members.forEach((s, i) => {
                                 s.groupKey = groupName;
                                 s.column = (i % lineupColumns) + 1;
@@ -549,11 +510,17 @@
                     groups.forEach(grp => {
                         const members = lineupList.filter(l => l.groupKey === grp);
                         const sheetData = [];
+                        
+                        // 行（深さ）の最大値を探す
                         const maxRow = Math.max(...members.map(m => m.row));
+                        
                         for(let r = 1; r <= maxRow; r++) {
                             const rowObj = {};
+                            // その行にいるメンバーを列ごとに配置
                             const rowMembers = members.filter(m => m.row === r);
-                            rowMembers.forEach(m => { rowObj[`列${m.column}`] = m.name; });
+                            rowMembers.forEach(m => {
+                                rowObj[`列${m.column}`] = m.name;
+                            });
                             sheetData.push(rowObj);
                         }
                         const ws = XLSX.utils.json_to_sheet(sheetData);
@@ -578,20 +545,23 @@
                                             <Icons.Download/> 走順を保存
                                         </button>
                                     </div>
-                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 max-h-96 overflow-y-auto custom-scrollbar p-1">
+                                    {/* 修正箇所: グリッドを1列または2列に変更し、レース内をスクロール可能に */}
+                                    <div className="grid gap-6 lg:grid-cols-2 max-h-96 overflow-y-auto custom-scrollbar p-1">
                                         {[...new Set(raceList.map(r=>r.group))].map(grp => (
-                                            <div key={grp} className="space-y-3">
+                                            <div key={grp} className="space-y-4">
                                                 <h4 className="font-bold text-green-600 text-sm border-b border-green-200 pb-1">{grp}</h4>
                                                 {[...new Set(raceList.filter(r=>r.group===grp).map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => (
-                                                    <div key={rNo} className="bg-green-50 p-3 rounded-lg border border-green-100 shadow-sm">
+                                                    <div key={rNo} className="bg-green-50 p-4 rounded-lg border border-green-100 shadow-sm">
                                                         <div className="text-xs font-bold text-green-700 mb-2">第{rNo}レース</div>
-                                                        <div className="flex gap-2 text-xs">
-                                                            {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
-                                                                <div key={r.lane} className={`flex-1 p-1 text-center rounded ${r.team==='赤'?'bg-white text-red-600 border border-red-200':'bg-white text-slate-700 border border-slate-200'}`}>
-                                                                    <div className="text-[10px] opacity-70">{r.lane}</div>
-                                                                    <div className="font-bold truncate">{r.name}</div>
-                                                                </div>
-                                                            ))}
+                                                        <div className="overflow-x-auto pb-2"> {/* 横スクロールコンテナ */}
+                                                            <div className="flex gap-2 text-xs min-w-max"> {/* 幅を確保 */}
+                                                                {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
+                                                                    <div key={r.lane} className={`w-24 p-2 text-center rounded shrink-0 border ${r.team==='赤'?'bg-white text-red-600 border-red-200':'bg-white text-slate-700 border-slate-200'}`}>
+                                                                        <div className="text-[10px] opacity-70 mb-1">{r.lane}コース</div>
+                                                                        <div className="font-bold break-words whitespace-normal leading-tight text-sm">{r.name}</div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
