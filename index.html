@@ -83,6 +83,48 @@
             );
         };
 
+        // パスワードモーダル
+        const PasswordModal = ({ show, onClose, onSuccess }) => {
+            const [inputVal, setInputVal] = useState('');
+            const [error, setError] = useState('');
+            const inputRef = useRef(null);
+
+            useEffect(() => {
+                if (show && inputRef.current) {
+                    inputRef.current.focus();
+                }
+            }, [show]);
+
+            if (!show) return null;
+
+            const handleExecute = () => {
+                if (inputVal === SECRET_KEY) {
+                    onSuccess();
+                } else {
+                    setError('合言葉が違います');
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') handleExecute();
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
+                    <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
+                        <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
+                        <input ref={inputRef} type="text" className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none" placeholder="合言葉" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleKeyDown} />
+                        {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
+                        <div className="flex justify-end gap-3 mt-4">
+                            <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
+                            <button onClick={handleExecute} className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg shadow-md">実行</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         // --- 定数・サンプルデータ ---
         const PATTERNS = [
             { id: 'abba', name: '赤 白 白 赤', sub: 'ジグザグ・赤始', desc: '1位:赤, 2位:白, 3位:白, 4位:赤...' },
@@ -134,59 +176,6 @@
 
         /* 合言葉見つかっちゃった！降参！ご自由にお使いください。 */
         const SECRET_KEY = "ウンドウカイ";
-
-        // パスワードモーダル（独立コンポーネント化）
-        const PasswordModal = ({ show, onClose, onSuccess }) => {
-            const [inputVal, setInputVal] = useState('');
-            const [error, setError] = useState('');
-
-            // モーダルが開かれたときにフォーカスする
-            const inputRef = useRef(null);
-            useEffect(() => {
-                if (show && inputRef.current) {
-                    inputRef.current.focus();
-                }
-            }, [show]);
-
-            if (!show) return null;
-
-            const handleExecute = () => {
-                if (inputVal === SECRET_KEY) {
-                    onSuccess();
-                } else {
-                    setError('合言葉が違います');
-                }
-            };
-
-            const handleKeyDown = (e) => {
-                if (e.key === 'Enter') {
-                    handleExecute();
-                }
-            };
-
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
-                    <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
-                        <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
-                        <input 
-                            ref={inputRef}
-                            type="text" 
-                            className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none"
-                            placeholder="合言葉"
-                            value={inputVal}
-                            onChange={(e) => setInputVal(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                        />
-                        {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
-                        <div className="flex justify-end gap-3 mt-4">
-                            <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
-                            <button onClick={handleExecute} className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg shadow-md">実行</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
 
         const App = () => {
             const [step, setStep] = useState(1);
@@ -257,7 +246,6 @@
                 }).filter(d => d !== null);
             };
 
-            // Trigger Logic
             const requestAssignTeams = () => {
                 const students = parseData(rawInput);
                 if (students.length === 0) { alert('データを入力してください'); return; }
@@ -326,7 +314,6 @@
             };
 
             const generateFinalOutput = () => {
-                // 1. Race Logic
                 let races = [];
                 if (raceEnabled) {
                     const groups = [];
@@ -386,7 +373,6 @@
                 }
                 setRaceList(races);
 
-                // 2. Lineup Logic
                 let lineups = [];
                 if (lineupEnabled) {
                     const sortFunc = (a, b) => {
@@ -422,7 +408,6 @@
                         if (lineupMode === 'separate') {
                             const boysCols = Math.floor(lineupColumns / 2) || 1;
                             const girlsCols = lineupColumns - boysCols || 1;
-
                             const boys = members.filter(s => /男|M/i.test(s.gender));
                             const girls = members.filter(s => !/男|M/i.test(s.gender));
 
@@ -577,20 +562,23 @@
                                             <Icons.Download/> 走順を保存
                                         </button>
                                     </div>
-                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 max-h-96 overflow-y-auto custom-scrollbar p-1">
+                                    {/* 修正点: 横幅を確保してスクロール可能に */}
+                                    <div className="grid gap-6 lg:grid-cols-2 max-h-96 overflow-y-auto custom-scrollbar p-1">
                                         {[...new Set(raceList.map(r=>r.group))].map(grp => (
-                                            <div key={grp} className="space-y-3">
+                                            <div key={grp} className="space-y-4">
                                                 <h4 className="font-bold text-green-600 text-sm border-b border-green-200 pb-1">{grp}</h4>
                                                 {[...new Set(raceList.filter(r=>r.group===grp).map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => (
-                                                    <div key={rNo} className="bg-green-50 p-3 rounded-lg border border-green-100 shadow-sm">
+                                                    <div key={rNo} className="bg-green-50 p-4 rounded-lg border border-green-100 shadow-sm">
                                                         <div className="text-xs font-bold text-green-700 mb-2">第{rNo}レース</div>
-                                                        <div className="flex gap-2 text-xs">
-                                                            {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
-                                                                <div key={r.lane} className={`flex-1 p-1 text-center rounded ${r.team==='赤'?'bg-white text-red-600 border border-red-200':'bg-white text-slate-700 border border-slate-200'}`}>
-                                                                    <div className="text-[10px] opacity-70">{r.lane}</div>
-                                                                    <div className="font-bold truncate">{r.name}</div>
-                                                                </div>
-                                                            ))}
+                                                        <div className="overflow-x-auto pb-2 custom-scrollbar"> {/* 横スクロールコンテナ */}
+                                                            <div className="flex gap-2 text-xs min-w-max"> {/* 幅を確保 */}
+                                                                {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
+                                                                    <div key={r.lane} className={`w-24 p-2 text-center rounded shrink-0 border ${r.team==='赤'?'bg-white text-red-600 border-red-200':'bg-white text-slate-700 border-slate-200'}`}>
+                                                                        <div className="text-[10px] opacity-70 mb-1">{r.lane}コース</div>
+                                                                        <div className="font-bold break-words leading-tight text-sm">{r.name}</div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
