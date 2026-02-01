@@ -17,9 +17,9 @@
         body { font-family: 'Noto Sans JP', sans-serif; background-color: #f0fdf4; color: #1e293b; }
         
         /* カスタムスクロールバー */
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f0fdf4; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #86efac; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar { height: 10px; width: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f0fdf4; border-radius: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #86efac; border-radius: 5px; border: 2px solid #f0fdf4; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4ade80; }
 
         /* テキストエリア設定 */
@@ -555,36 +555,44 @@
                         
                         <div className="p-6 min-h-[300px] bg-white">
                             {tab === 'race' && raceEnabled && (
-                                <div className="animate-fade-in">
+                                <div className="animate-fade-in space-y-8">
                                     <div className="flex justify-between items-center mb-4">
                                         <h3 className="font-bold text-green-800 text-lg">🏃 徒競走組み分け</h3>
                                         <button onClick={downloadRaceData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
                                             <Icons.Download/> 走順を保存
                                         </button>
                                     </div>
-                                    {/* 修正点: 横幅を確保してスクロール可能に */}
-                                    <div className="grid gap-6 lg:grid-cols-2 max-h-96 overflow-y-auto custom-scrollbar p-1">
-                                        {[...new Set(raceList.map(r=>r.group))].map(grp => (
-                                            <div key={grp} className="space-y-4">
-                                                <h4 className="font-bold text-green-600 text-sm border-b border-green-200 pb-1">{grp}</h4>
-                                                {[...new Set(raceList.filter(r=>r.group===grp).map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => (
-                                                    <div key={rNo} className="bg-green-50 p-4 rounded-lg border border-green-100 shadow-sm">
-                                                        <div className="text-xs font-bold text-green-700 mb-2">第{rNo}レース</div>
-                                                        <div className="overflow-x-auto pb-2 custom-scrollbar"> {/* 横スクロールコンテナ */}
-                                                            <div className="flex gap-2 text-xs min-w-max"> {/* 幅を確保 */}
+                                    
+                                    {[...new Set(raceList.map(r=>r.group))].map(grp => (
+                                        <div key={grp} className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
+                                            <div className="bg-green-50 px-4 py-3 border-b border-green-200 font-bold text-green-800 flex items-center gap-2">
+                                                <span className="w-2 h-6 bg-green-500 rounded-full"></span>
+                                                {grp}
+                                            </div>
+                                            
+                                            <div className="overflow-x-auto custom-scrollbar">
+                                                <div className="p-4 min-w-max space-y-3">
+                                                    {[...new Set(raceList.filter(r=>r.group===grp).map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => (
+                                                        <div key={rNo} className="flex items-start gap-4 p-2 hover:bg-slate-50 rounded-lg transition-colors">
+                                                            <div className="w-24 shrink-0 pt-2">
+                                                                <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">
+                                                                    第{rNo}レース
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex gap-3">
                                                                 {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
-                                                                    <div key={r.lane} className={`w-24 p-2 text-center rounded shrink-0 border ${r.team==='赤'?'bg-white text-red-600 border-red-200':'bg-white text-slate-700 border-slate-200'}`}>
-                                                                        <div className="text-[10px] opacity-70 mb-1">{r.lane}コース</div>
-                                                                        <div className="font-bold break-words leading-tight text-sm">{r.name}</div>
+                                                                    <div key={r.lane} className={`w-28 p-2 rounded border text-center shrink-0 shadow-sm ${r.team==='赤'?'bg-red-50 border-red-200 text-red-700':'bg-white border-slate-200 text-slate-700'}`}>
+                                                                        <div className="text-[10px] opacity-60 mb-1 font-bold">{r.lane}コース</div>
+                                                                        <div className="font-bold text-sm truncate" title={r.name}>{r.name}</div>
                                                                     </div>
                                                                 ))}
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
