@@ -225,22 +225,48 @@
                 URL.revokeObjectURL(url);
             };
 
+            // 【改修点1】見出し行の自動除外と未入力データの正しいパース
             const parseData = (input) => {
                 if (!input) return [];
                 const lines = input.trim().split(/\r?\n/);
+                
+                // 見出し行とみなすキーワード
+                const headerKeywords = ['氏名', '名前', 'クラス', '組', '性別', 'タイム', '時間', '身長', 'チーム指定', 'チーム'];
+
                 return lines.map((line, idx) => {
                     if (!line.trim()) return null;
                     let parts = line.split(/[\t,]+/);
                     if (parts.length < 2 && line.includes(' ')) parts = line.split(/\s+/);
                     parts = parts.map(p => p.trim());
                     if (parts.length < 2) return null;
+
+                    // 見出し行が含まれていればスキップ
+                    const isHeader = parts.some(part => headerKeywords.some(kw => part.includes(kw)));
+                    if (isHeader) return null;
+
+                    const rawTime = parts[3];
+                    const rawHeight = parts[4];
+
+                    // 0や空欄を正しく数値に変換
+                    let timeVal = 0;
+                    if (rawTime !== undefined && rawTime !== '') {
+                        const parsed = parseFloat(rawTime);
+                        timeVal = isNaN(parsed) ? 0 : parsed;
+                    }
+
+                    let heightVal = 0;
+                    if (rawHeight !== undefined && rawHeight !== '') {
+                        const parsed = parseFloat(rawHeight);
+                        heightVal = isNaN(parsed) ? 0 : parsed;
+                    }
+
                     return {
                         id: idx,
                         name: parts[0] || '',
-                        classNum: parts[1] || '1',
+                        classNum: parts[1] !== undefined && parts[1] !== '' ? parts[1] : '0',
                         gender: parts[2] || '不明',
-                        time: parseFloat(parts[3]) || 99.99,
-                        height: parseFloat(parts[4]) || 0,
+                        time: timeVal,
+                        height: heightVal,
                         fixedTeam: parts[5] || '',
                     };
                 }).filter(d => d !== null);
@@ -259,7 +285,10 @@
 
             const assignTeams = () => {
                 const students = parseData(rawInput);
-                const getSorter = () => criteria === 'time' ? (a, b) => a.time - b.time : (a, b) => a.height - b.height;
+                // 【改修点3】0を「999」として扱い、最後尾に回すソート処理
+                const getSorter = () => criteria === 'time' 
+                    ? (a, b) => (a.time === 0 ? 999 : a.time) - (b.time === 0 ? 999 : b.time)
+                    : (a, b) => (a.height === 0 ? 999 : a.height) - (b.height === 0 ? 999 : b.height);
 
                 const applyPattern = (list, patternType) => {
                     const sortedList = [...list].sort(getSorter());
@@ -325,7 +354,8 @@
                     }
 
                     groups.forEach(group => {
-                        const sorted = [...group.list].sort((a, b) => a.time - b.time);
+                        // 【改修点3-b】徒競走リストでも、0を「999」として扱い最後尾に回す
+                        const sorted = [...group.list].sort((a, b) => (a.time === 0 ? 999 : a.time) - (b.time === 0 ? 999 : b.time));
                         let reds = sorted.filter(s => s.team === '赤');
                         let whites = sorted.filter(s => s.team === '白');
                         let raceCount = 1;
@@ -386,7 +416,8 @@
                         const aIsBoy = /男|M/i.test(a.gender);
                         const bIsBoy = /男|M/i.test(b.gender);
                         if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
-                        return a.height - b.height;
+                        // 【改修点3-c】背の順リストでも、身長0を「999」として扱い最後尾に回す
+                        return (a.height === 0 ? 999 : a.height) - (b.height === 0 ? 999 : b.height);
                     };
 
                     const sortedRaw = [...teamData].sort(sortFunc);
@@ -444,30 +475,59 @@
             };
 
             // --- UI Components ---
+            // 【改修点2】未入力・0データを黄色にハイライトするテーブル
             const PreviewTable = ({ inputData }) => {
                 const parsed = parseData(inputData);
                 if (parsed.length === 0) return null;
+                
+                const isZeroOrEmpty = (val) => val === 0 || val === '0' || val === '' || val === null || val === undefined;
+
                 return (
-                    <div className="mt-4 bg-white rounded-lg border border-green-200 overflow-hidden text-sm animate-fade-in">
-                        <div className="bg-green-50 p-3 text-green-800 font-bold border-b border-green-200 flex items-center gap-2">
-                            <Icons.Check /> プレビュー (全{parsed.length}名)
+                    <div className="mt-4 bg-white rounded-lg border border-green-200 overflow-hidden text-sm animate-fade-in shadow-sm">
+                        <div className="bg-green-50 p-3 text-green-800 font-bold border-b border-green-200 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Icons.Check /> プレビュー (全{parsed.length}名)
+                            </div>
+                            <div className="text-xs bg-yellow-100 text-yellow-800 px-2.5 py-1 rounded-full border border-yellow-300 font-normal flex items-center gap-1">
+                                <span>💡 タイム・身長・クラスが「0」「未入力」の箇所は黄色で表示されます</span>
+                            </div>
                         </div>
                         <div className="max-h-96 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left">
-                                <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase">
-                                    <tr><th className="p-2 pl-4">氏名</th><th className="p-2">クラス</th><th className="p-2">性別</th><th className="p-2">タイム</th><th className="p-2">身長</th><th className="p-2 text-red-600">指定</th></tr>
+                                <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase shadow-sm">
+                                    <tr>
+                                        <th className="p-2 pl-4">氏名</th>
+                                        <th className="p-2">クラス</th>
+                                        <th className="p-2">性別</th>
+                                        <th className="p-2">タイム</th>
+                                        <th className="p-2">身長</th>
+                                        <th className="p-2 text-red-600">指定</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
-                                    {parsed.map((r, i) => (
-                                        <tr key={i} className="border-b bg-white hover:bg-green-50">
-                                            <td className="p-2 pl-4 font-bold">{r.name}</td>
-                                            <td className="p-2">{r.classNum}</td>
-                                            <td className="p-2">{r.gender}</td>
-                                            <td className="p-2 font-mono">{r.time}</td>
-                                            <td className="p-2 font-mono">{r.height}</td>
-                                            <td className="p-2 text-red-600 font-bold">{r.fixedTeam}</td>
-                                        </tr>
-                                    ))}
+                                    {parsed.map((r, i) => {
+                                        const zeroClass = isZeroOrEmpty(r.classNum);
+                                        const zeroTime = isZeroOrEmpty(r.time);
+                                        const zeroHeight = isZeroOrEmpty(r.height);
+                                        const highlightClass = "bg-yellow-200 font-bold text-amber-900 border-2 border-yellow-400";
+
+                                        return (
+                                            <tr key={i} className="border-b bg-white hover:bg-green-50 transition-colors">
+                                                <td className="p-2 pl-4 font-bold">{r.name}</td>
+                                                <td className={`p-2 rounded ${zeroClass ? highlightClass : ''}`}>
+                                                    {r.classNum}
+                                                </td>
+                                                <td className="p-2">{r.gender}</td>
+                                                <td className={`p-2 font-mono rounded ${zeroTime ? highlightClass : ''}`}>
+                                                    {r.time}
+                                                </td>
+                                                <td className={`p-2 font-mono rounded ${zeroHeight ? highlightClass : ''}`}>
+                                                    {r.height}
+                                                </td>
+                                                <td className="p-2 text-red-600 font-bold">{r.fixedTeam}</td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -737,7 +797,7 @@
                                         <p className="font-bold mb-1">【Excelからの列コピー順序】</p>
                                         <p className="font-mono text-xs md:text-sm whitespace-nowrap overflow-x-auto">A:氏名 | B:クラス | C:性別 | D:タイム | E:身長 | <span className="text-red-600 font-bold">F:チーム指定</span></p>
                                         <p className="text-xs text-red-500 mt-1 font-bold">※F列に『赤』『白』と入力すると、自動振り分けされずにそのチームになります。</p>
-                                        <p className="text-xs text-slate-500 mt-1">※入力欄で列がズレて見えても、下のプレビュー表が合っていれば問題ありません。</p>
+                                        <p className="text-xs text-slate-500 mt-1">※見出し行ごと貼り付けても自動で無視されます。</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>setRawInput(SAMPLE_DATA)} className="text-xs bg-white text-green-600 border border-green-200 px-3 py-2 rounded shadow-sm hover:bg-green-50 font-bold">サンプル入力</button>
