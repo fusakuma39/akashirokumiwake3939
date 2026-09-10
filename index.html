@@ -34,11 +34,9 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
 
-        /* 印刷用の設定 */
+        /* 印刷用の設定 (カラー・横向き強制) */
         @media print {
-            /* 用紙を横向きに */
             @page { size: landscape; margin: 10mm; }
-            /* 背景の色と画像を強制的に印刷する */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
@@ -182,6 +180,535 @@
 
         const SECRET_KEY = "ウンドウカイ";
 
+        const downloadTemplate = () => {
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const header = "氏名,クラス,性別,タイム,身長,チーム指定(任意)\n";
+            const row1 = "佐藤太郎,1,男,8.5,140.5,\n";
+            const row2 = "鈴木花子,1,女,9.2,138.0,赤\n";
+            const blob = new Blob([bom, header + row1 + row2], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "組み分け入力用テンプレート.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        const parseData = (input) => {
+            if (!input) return [];
+            const lines = input.trim().split(/\r?\n/);
+            const headerKeywords = ['氏名', '名前', 'クラス', '組', '性別', 'タイム', '時間', '身長', 'チーム指定', 'チーム'];
+
+            return lines.map((line, idx) => {
+                if (!line.trim()) return null;
+                let parts = line.split(/[\t,]+/);
+                if (parts.length < 2 && line.includes(' ')) parts = line.split(/\s+/);
+                parts = parts.map(p => p.trim());
+                if (parts.length < 2) return null;
+
+                const isHeader = parts.some(part => headerKeywords.some(kw => part.includes(kw)));
+                if (isHeader) return null;
+
+                const rawTime = parts[3];
+                const rawHeight = parts[4];
+
+                let timeVal = 0;
+                if (rawTime !== undefined && rawTime !== '') {
+                    const parsed = parseFloat(rawTime);
+                    timeVal = isNaN(parsed) ? 0 : parsed;
+                }
+
+                let heightVal = 0;
+                if (rawHeight !== undefined && rawHeight !== '') {
+                    const parsed = parseFloat(rawHeight);
+                    heightVal = isNaN(parsed) ? 0 : parsed;
+                }
+
+                return {
+                    id: idx,
+                    name: parts[0] || '',
+                    classNum: parts[1] !== undefined && parts[1] !== '' ? parts[1] : '0',
+                    gender: parts[2] || '不明',
+                    time: timeVal,
+                    height: heightVal,
+                    fixedTeam: parts[5] || '',
+                };
+            }).filter(d => d !== null);
+        };
+
+        const PreviewTable = ({ inputData }) => {
+            const parsed = parseData(inputData);
+            if (parsed.length === 0) return null;
+
+            const isZeroOrEmpty = (val) => val === 0 || val === '0' || val === '' || val === null || val === undefined;
+
+            return (
+                <div className="mt-4 bg-white rounded-lg border border-green-200 overflow-hidden text-sm animate-fade-in shadow-sm">
+                    <div className="bg-green-50 p-3 text-green-800 font-bold border-b border-green-200 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <Icons.Check /> プレビュー (全{parsed.length}名)
+                        </div>
+                        <div className="text-xs bg-yellow-100 text-yellow-800 px-2.5 py-1 rounded-full border border-yellow-300 font-normal flex items-center gap-1">
+                            <span>💡 タイム・身長・クラスが「0」「未入力」の箇所は黄色で表示されます</span>
+                        </div>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-left">
+                            <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase shadow-sm">
+                                <tr><th className="p-2 pl-4">氏名</th><th className="p-2">クラス</th><th className="p-2">性別</th><th className="p-2">タイム</th><th className="p-2">身長</th><th className="p-2 text-red-600">指定</th></tr>
+                            </thead>
+                            <tbody>
+                                {parsed.map((r, i) => {
+                                    const highlightClass = "bg-yellow-200 font-bold text-amber-900 border-2 border-yellow-400";
+                                    return (
+                                        <tr key={i} className="border-b bg-white hover:bg-green-50 transition-colors">
+                                            <td className="p-2 pl-4 font-bold">{r.name}</td>
+                                            <td className={`p-2 rounded ${isZeroOrEmpty(r.classNum) ? highlightClass : ''}`}>{r.classNum}</td>
+                                            <td className="p-2">{r.gender}</td>
+                                            <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.time) ? highlightClass : ''}`}>{r.time}</td>
+                                            <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.height) ? highlightClass : ''}`}>{r.height}</td>
+                                            <td className="p-2 text-red-600 font-bold">{r.fixedTeam}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const ResultTableStep4 = ({ teamData }) => {
+            const downloadRoster = () => {
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.json_to_sheet(teamData.map(d => ({
+                    "クラス": d.classNum, "チーム": d.team, "氏名": d.name, "性別": d.gender, "タイム": d.time, "身長": d.height, "順位": d.rankInGroup
+                })));
+                XLSX.utils.book_append_sheet(wb, ws, "名簿一覧");
+                XLSX.writeFile(wb, "運動会_名簿一覧.xlsx");
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden">
+                    <div className="p-4 bg-green-50 border-b border-green-200 flex justify-between items-center">
+                        <h3 className="font-bold text-green-800 flex items-center gap-2"><Icons.User/> 振り分け結果一覧</h3>
+                        <button onClick={downloadRoster} className="bg-orange-500 hover:bg-orange-600 text-white text-sm px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition shadow-md">
+                            <Icons.Download/> 名簿を保存
+                        </button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase"><tr><th className="p-3 pl-6">クラス</th><th className="p-3">チーム</th><th className="p-3">氏名</th><th className="p-3">性別</th><th className="p-3">順位</th></tr></thead>
+                            <tbody>
+                                {teamData.map((d,i)=><tr key={i} className="border-b hover:bg-green-50"><td className="p-3 pl-6">{d.classNum}</td><td className={`p-3 font-bold ${d.team==='赤'?'text-red-500':'text-slate-500'}`}>{d.team}</td><td className="p-3 font-medium">{d.name}</td><td className="p-3">{d.gender}</td><td className="p-3">{d.rankInGroup}</td></tr>)}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const StepIndicator = ({ step }) => {
+            const steps = [
+                { n: 1, t: '基本' }, { n: 2, t: 'ルール' }, { n: 3, t: '入力' }, { n: 4, t: '名簿' }, { n: 5, t: '設定' }, { n: 6, t: '完了' }
+            ];
+            return (
+                <div className="mb-8 px-4">
+                    <div className="flex items-center justify-between relative max-w-4xl mx-auto">
+                        <div className="absolute top-4 left-0 w-full h-1 bg-green-200 -z-10 rounded"></div>
+                        <div className="absolute top-4 left-0 h-1 bg-green-500 -z-10 rounded transition-all duration-300" style={{ width: `${((step - 1) / 5) * 100}%` }}></div>
+                        {steps.map(s => (
+                            <div key={s.n} className="flex flex-col items-center gap-1 bg-f0fdf4 px-2 z-10">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold border-2 transition-all duration-300 ${step === s.n ? 'border-green-600 bg-white text-green-600 scale-125 shadow-md' : step > s.n ? 'border-green-500 bg-green-500 text-white' : 'border-green-200 bg-white text-green-300'}`}>{step > s.n ? <Icons.Check/> : s.n}</div>
+                                <span className={`text-[10px] font-bold ${step===s.n?'text-green-700':'text-green-300'}`}>{s.t}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const FinalResultView = ({ 
+            raceList, setRaceList, 
+            lineupList, setLineupList, 
+            raceEnabled, lineupEnabled, 
+            lineupColumns 
+        }) => {
+            const [tab, setTab] = useState('race');
+            const [draggedItem, setDraggedItem] = useState(null);
+            const [dragOverItem, setDragOverItem] = useState(null);
+            const [showPredictions, setShowPredictions] = useState(true);
+            const [resetTarget, setResetTarget] = useState(null);
+
+            // トップレベル化されたため、マウント時のみ初期状態が安全に保存される
+            const initialRaceList = useMemo(() => JSON.parse(JSON.stringify(raceList)), []);
+            const initialLineupList = useMemo(() => JSON.parse(JSON.stringify(lineupList)), []);
+
+            const requestResetRace = (groupName) => setResetTarget({ type: 'race', group: groupName });
+            const requestResetLineup = (groupName) => setResetTarget({ type: 'lineup', group: groupName });
+
+            const executeReset = () => {
+                if (!resetTarget) return;
+                if (resetTarget.type === 'race') {
+                    setRaceList(prev => {
+                        // 初期のグループ順（男子→女子）を維持する
+                        const originalGroups = [...new Set(initialRaceList.map(r => r.group))];
+                        let newList = [];
+                        originalGroups.forEach(grp => {
+                            if (grp === resetTarget.group) {
+                                newList.push(...initialRaceList.filter(r => r.group === grp));
+                            } else {
+                                newList.push(...prev.filter(r => r.group === grp));
+                            }
+                        });
+                        return newList;
+                    });
+                } else if (resetTarget.type === 'lineup') {
+                    setLineupList(prev => {
+                        const originalGroups = [...new Set(initialLineupList.map(r => r.groupKey))];
+                        let newList = [];
+                        originalGroups.forEach(grp => {
+                            if (grp === resetTarget.group) {
+                                newList.push(...initialLineupList.filter(r => r.groupKey === grp));
+                            } else {
+                                newList.push(...prev.filter(r => r.groupKey === grp));
+                            }
+                        });
+                        return newList;
+                    });
+                }
+                setResetTarget(null);
+            };
+
+            const onDragStart = (e, type, item) => {
+                setDraggedItem({ type, item });
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", "");
+                }
+            };
+
+            const onDragOver = (e, type, item) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!draggedItem || draggedItem.type !== type) return;
+
+                if (type === 'race') {
+                    if (!dragOverItem || dragOverItem.type !== 'race' || dragOverItem.group !== item.group || dragOverItem.raceNo !== item.raceNo || dragOverItem.lane !== item.lane) {
+                        setDragOverItem({ type: 'race', ...item });
+                    }
+                } else if (type === 'lineup') {
+                    if (!dragOverItem || dragOverItem.type !== 'lineup' || dragOverItem.groupKey !== item.groupKey || dragOverItem.row !== item.row || dragOverItem.column !== item.column) {
+                        setDragOverItem({ type: 'lineup', ...item });
+                    }
+                } else if (type === 'raceRow') {
+                    if (!dragOverItem || dragOverItem.type !== 'raceRow' || dragOverItem.group !== item.group || dragOverItem.raceNo !== item.raceNo) {
+                        setDragOverItem({ type: 'raceRow', ...item });
+                    }
+                }
+            };
+
+            const onDragLeave = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverItem(null);
+            };
+
+            const onDrop = (e, type, targetItem) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverItem(null);
+                if (!draggedItem || draggedItem.type !== type) return;
+
+                const sourceItem = draggedItem.item;
+                if (type === 'race') {
+                    setRaceList(prev => {
+                        const newList = [...prev];
+                        const sIdx = newList.findIndex(r => r.group === sourceItem.group && r.raceNo === sourceItem.raceNo && r.lane === sourceItem.lane);
+                        const tIdx = newList.findIndex(r => r.group === targetItem.group && r.raceNo === targetItem.raceNo && r.lane === targetItem.lane);
+                        if (sIdx === -1 || tIdx === -1) return prev;
+
+                        const sTemp = { ...newList[sIdx] };
+                        const tTemp = { ...newList[tIdx] };
+                        newList[sIdx] = { ...tTemp, group: sTemp.group, raceNo: sTemp.raceNo, lane: sTemp.lane };
+                        newList[tIdx] = { ...sTemp, group: tTemp.group, raceNo: tTemp.raceNo, lane: tTemp.lane };
+                        return newList;
+                    });
+                } else if (type === 'lineup') {
+                    setLineupList(prev => {
+                        const newList = [...prev];
+                        const sIdx = newList.findIndex(l => l.groupKey === sourceItem.groupKey && l.row === sourceItem.row && l.column === sourceItem.column);
+                        const tIdx = newList.findIndex(l => l.groupKey === targetItem.groupKey && l.row === targetItem.row && l.column === targetItem.column);
+                        if (sIdx === -1 || tIdx === -1) return prev;
+
+                        const sTemp = { ...newList[sIdx] };
+                        const tTemp = { ...newList[tIdx] };
+                        newList[sIdx] = { ...tTemp, groupKey: sTemp.groupKey, row: sTemp.row, column: sTemp.column };
+                        newList[tIdx] = { ...sTemp, groupKey: tTemp.groupKey, row: tTemp.row, column: tTemp.column };
+                        return newList;
+                    });
+                } else if (type === 'raceRow') {
+                    setRaceList(prev => prev.map(r => {
+                        if (r.group !== sourceItem.group) return r; 
+                        if (r.raceNo === sourceItem.raceNo) return { ...r, raceNo: targetItem.raceNo };
+                        if (r.raceNo === targetItem.raceNo) return { ...r, raceNo: sourceItem.raceNo };
+                        return r;
+                    }));
+                }
+                setDraggedItem(null);
+            };
+
+            const downloadRaceData = () => {
+                const wb = XLSX.utils.book_new();
+                const groups = [...new Set(raceList.map(r => r.group))];
+                groups.forEach(grp => {
+                    const grpRaces = raceList.filter(r => r.group === grp);
+                    const raceNos = [...new Set(grpRaces.map(r => r.raceNo))].sort((a,b)=>a-b);
+                    const sheetData = [];
+                    raceNos.forEach(rNo => {
+                        const runners = grpRaces.filter(r => r.raceNo === rNo).sort((a,b)=>a.lane - b.lane);
+                        const row = { "レース": `第${rNo}R` };
+                        runners.forEach(r => { row[`コース${r.lane}`] = r.name; });
+                        sheetData.push(row);
+                    });
+                    const ws = XLSX.utils.json_to_sheet(sheetData);
+                    XLSX.utils.book_append_sheet(wb, ws, `${grp}_徒競走`);
+                });
+                XLSX.writeFile(wb, "運動会_徒競走リスト.xlsx");
+            };
+
+            const downloadLineupData = () => {
+                const wb = XLSX.utils.book_new();
+                const groups = [...new Set(lineupList.map(l => l.groupKey))];
+                groups.forEach(grp => {
+                    const members = lineupList.filter(l => l.groupKey === grp);
+                    const sheetData = [];
+                    const maxRow = Math.max(...members.map(m => m.row));
+                    for(let r = 1; r <= maxRow; r++) {
+                        const rowObj = {};
+                        const rowMembers = members.filter(m => m.row === r);
+                        rowMembers.forEach(m => { rowObj[`列${m.column}`] = m.name; });
+                        sheetData.push(rowObj);
+                    }
+                    const ws = XLSX.utils.json_to_sheet(sheetData);
+                    XLSX.utils.book_append_sheet(wb, ws, grp);
+                });
+                XLSX.writeFile(wb, "運動会_背の順リスト.xlsx");
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-lg border border-green-200 overflow-hidden print:shadow-none print:border-none print:m-0 print:p-0">
+                    <div className="flex border-b bg-green-50 print:hidden items-center">
+                        <div className="flex flex-1">
+                            {raceEnabled && <button onClick={()=>setTab('race')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='race'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Run/> 徒競走リスト</button>}
+                            {lineupEnabled && <button onClick={()=>setTab('lineup')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='lineup'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Users/> 背の順リスト</button>}
+                        </div>
+                        
+                        <div className="px-4 flex gap-3">
+                            {tab === 'race' && (
+                                <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">
+                                    <input type="checkbox" checked={showPredictions} onChange={(e)=>setShowPredictions(e.target.checked)} className="w-4 h-4 accent-green-600"/>
+                                    👑 順位予想枠を表示
+                                </label>
+                            )}
+                            <button onClick={() => window.print()} className="flex items-center gap-2 text-sm font-bold bg-slate-700 text-white px-4 py-1.5 rounded-lg shadow hover:bg-slate-800 transition">
+                                🖨️ 印刷
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="p-6 min-h-[300px] bg-white print:p-0">
+                        {tab === 'race' && raceEnabled && (
+                            <div className="animate-fade-in space-y-8">
+                                <div className="flex justify-between items-center mb-4 print:hidden">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="font-bold text-green-800 text-lg flex items-center gap-2">🏃 徒競走組み分け</h3>
+                                        <span className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold">💡 人の入れ替えや、左側の「第◯R」をドラッグしてレースごと入れ替えも可能です！</span>
+                                    </div>
+                                    <button onClick={downloadRaceData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
+                                        <Icons.Download/> 走順を保存
+                                    </button>
+                                </div>
+                                
+                                {[...new Set(raceList.map(r=>r.group))].map(grp => {
+                                    const raceMembersForGroup = raceList.filter(r => r.group === grp);
+                                    const maxLanes = Math.max(...raceMembersForGroup.map(r => r.lane));
+
+                                    return (
+                                        <div key={grp} className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden print:border-none print:shadow-none print:mb-8 page-break-inside-avoid">
+                                            <div className="bg-green-50 px-4 py-3 border-b border-green-200 flex justify-between items-center print:border-b-2 print:bg-transparent">
+                                                <div className="font-bold text-green-800 flex items-center gap-2 print:text-xl">
+                                                    <span className="w-2 h-6 bg-green-500 rounded-full"></span>
+                                                    {grp} 徒競走
+                                                </div>
+                                                <button onClick={() => requestResetRace(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
+                                                    🔄 リセット
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="overflow-x-auto print:overflow-visible custom-scrollbar">
+                                                <div className="p-4 min-w-max space-y-1 print:p-0 print:mt-2">
+                                                    {/* 表ヘッダー */}
+                                                    <div className="flex gap-2 p-2 border-b-2 border-green-200 bg-green-50/50 print:bg-transparent">
+                                                        <div className="w-20 shrink-0"></div>
+                                                        {[...Array(maxLanes)].map((_, i) => (
+                                                            <div key={i} className="w-28 text-center font-bold text-green-700 text-sm">
+                                                                {i + 1}コース
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* 各レースの行 */}
+                                                    {[...new Set(raceMembersForGroup.map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => {
+                                                        const raceMembers = raceMembersForGroup.filter(r => r.raceNo === rNo);
+                                                        const validTimes = [...new Set(raceMembers.filter(m => m.time > 0).map(m => m.time))].sort((a, b) => a - b);
+                                                        
+                                                        const isRowDragOver = dragOverItem && dragOverItem.type === 'raceRow' && dragOverItem.group === grp && dragOverItem.raceNo === rNo;
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={rNo} 
+                                                                className={`flex gap-2 p-2 border-b border-slate-100 hover:bg-slate-50 transition-colors print:border-slate-300 print:hover:bg-transparent ${isRowDragOver ? 'bg-green-50/80 border-dashed border-2 border-green-400 scale-[1.01] shadow-sm z-10 opacity-90' : ''}`}
+                                                                onDragOver={(e) => onDragOver(e, 'raceRow', { group: grp, raceNo: rNo })}
+                                                                onDragLeave={onDragLeave}
+                                                                onDrop={(e) => onDrop(e, 'raceRow', { group: grp, raceNo: rNo })}
+                                                            >
+                                                                {/* ドラッグ用レースバッジ */}
+                                                                <div 
+                                                                    className="w-20 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing print:cursor-auto"
+                                                                    draggable
+                                                                    onDragStart={(e) => onDragStart(e, 'raceRow', { group: grp, raceNo: rNo })}
+                                                                    title="ドラッグしてレースの順番を入れ替え"
+                                                                >
+                                                                    <span className="bg-green-100 hover:bg-green-200 text-green-800 text-xs font-bold px-3 py-1 rounded shadow-sm print:shadow-none print:bg-transparent flex items-center gap-1 transition-colors">
+                                                                        <span className="opacity-50 text-[10px] print:hidden">↕</span>
+                                                                        第{rNo}R
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                {/* 各レーンの個人表示 */}
+                                                                {[...Array(maxLanes)].map((_, i) => {
+                                                                    const lane = i + 1;
+                                                                    const r = raceMembers.find(m => m.lane === lane);
+                                                                    
+                                                                    if (!r) return <div key={`empty-${lane}`} className="w-28 shrink-0 p-2"></div>;
+
+                                                                    const isDragOver = dragOverItem && dragOverItem.type === 'race' && dragOverItem.group === r.group && dragOverItem.raceNo === r.raceNo && dragOverItem.lane === r.lane;
+                                                                    const rank = r.time > 0 ? validTimes.indexOf(r.time) + 1 : 99;
+                                                                    
+                                                                    const baseStyle = r.team === '赤' ? "bg-red-50 text-red-800" : "bg-white text-slate-800";
+                                                                    
+                                                                    let borderStyle = "border border-slate-300";
+                                                                    if (showPredictions && r.time > 0) {
+                                                                        if (rank === 1) borderStyle = "border-[3px] border-[#ffd700] shadow-sm"; // 金
+                                                                        else if (rank === 2) borderStyle = "border-[3px] border-[#c0c0c0] shadow-sm"; // 銀
+                                                                        else if (rank === 3) borderStyle = "border-[3px] border-[#b87333] shadow-sm"; // 銅
+                                                                        else if (r.team === '赤') borderStyle = "border border-red-300";
+                                                                    } else {
+                                                                        if (r.team === '赤') borderStyle = "border border-red-300";
+                                                                    }
+
+                                                                    return (
+                                                                        <div 
+                                                                            key={r.lane} 
+                                                                            draggable 
+                                                                            onDragStart={(e) => onDragStart(e, 'race', r)}
+                                                                            onDragOver={(e) => onDragOver(e, 'race', r)}
+                                                                            onDragLeave={onDragLeave}
+                                                                            onDrop={(e) => onDrop(e, 'race', r)}
+                                                                            className={`w-28 p-2 rounded text-center shrink-0 cursor-grab active:cursor-grabbing transition-colors duration-75 print:shadow-none ${baseStyle} ${borderStyle} ${isDragOver ? 'opacity-50 border-dashed border-green-500 z-10 bg-green-50' : ''}`}
+                                                                        >
+                                                                            <div className="font-bold text-sm truncate print:text-base" title={r.name}>{r.name}</div>
+                                                                            <div className="text-[10px] opacity-70 font-mono mt-0.5 print:hidden">{r.time > 0 ? `${r.time} 秒` : '-'}</div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {tab === 'lineup' && lineupEnabled && (
+                            <div className="animate-fade-in space-y-8">
+                                <div className="flex justify-between items-center mb-4 print:hidden">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="font-bold text-green-800 text-lg flex items-center gap-2">🧍 背の順隊形</h3>
+                                        <span className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold">💡 ドラッグ＆ドロップで入れ替えできます</span>
+                                    </div>
+                                    <button onClick={downloadLineupData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
+                                        <Icons.Download/> 背の順を保存
+                                    </button>
+                                </div>
+                                <div className="grid gap-6 md:grid-cols-2 max-h-[600px] overflow-y-auto custom-scrollbar p-1 print:overflow-visible print:max-h-none print:grid-cols-2 print:gap-4">
+                                    {[...new Set(lineupList.map(l=>l.groupKey))].map(grp => (
+                                        <div key={grp} className="bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm relative print:shadow-none print:bg-transparent page-break-inside-avoid">
+                                            <h4 className="font-bold text-green-700 mb-3 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`w-2 h-6 rounded ${grp.includes('赤')?'bg-red-500':'bg-white border border-slate-300'}`}></span>
+                                                    {grp.replace('_', ' ')}
+                                                </div>
+                                                <button onClick={() => requestResetLineup(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
+                                                    🔄 リセット
+                                                </button>
+                                            </h4>
+                                            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${lineupColumns}, 1fr)` }}>
+                                                {[...Array(lineupColumns)].map((_, i) => <div key={i} className="text-center text-xs text-green-600 font-bold">{i+1}列</div>)}
+                                                
+                                                {lineupList.filter(l=>l.groupKey===grp).map((l, idx) => {
+                                                    const isDragOver = dragOverItem && dragOverItem.type === 'lineup' && dragOverItem.groupKey === l.groupKey && dragOverItem.row === l.row && dragOverItem.column === l.column;
+                                                    const bgClass = l.team==='赤' ? 'bg-red-50 text-red-800 border-red-300' : 'bg-white text-slate-700 border-slate-300';
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={idx} 
+                                                            draggable
+                                                            onDragStart={(e) => onDragStart(e, 'lineup', l)}
+                                                            onDragOver={(e) => onDragOver(e, 'lineup', l)}
+                                                            onDragLeave={onDragLeave}
+                                                            onDrop={(e) => onDrop(e, 'lineup', l)}
+                                                            className={`p-2 text-center rounded border text-sm font-bold truncate cursor-grab active:cursor-grabbing transition-colors duration-75 print:shadow-none ${bgClass} ${isDragOver ? 'opacity-50 border-dashed border-green-500 bg-green-50' : 'hover:shadow-sm'}`} 
+                                                            style={{ gridColumn: l.column, gridRow: l.row + 1 }}
+                                                        >
+                                                            <div className="print:text-base">{l.name}</div>
+                                                            <div className="text-[10px] font-mono text-slate-400 font-normal mt-0.5 print:hidden">{l.height > 0 ? `${l.height} cm` : '-'}</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* リセット用の独自確認モーダル (プレビュー環境でも動作) */}
+                    {resetTarget && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in print:hidden">
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 border-2 border-green-200">
+                                <h3 className="text-lg font-bold text-green-800 mb-2 flex items-center gap-2">
+                                    <Icons.Info /> リセットの確認
+                                </h3>
+                                <p className="text-sm text-slate-600 mb-6 font-bold">
+                                    「{resetTarget.group.replace('_', ' ')}」の{resetTarget.type === 'race' ? '徒競走' : '背の順'}を、<br/>最初の状態に戻しますか？
+                                </p>
+                                <div className="flex justify-end gap-3">
+                                    <button onClick={() => setResetTarget(null)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg transition">キャンセル</button>
+                                    <button onClick={executeReset} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg shadow-md transition">リセットする</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const App = () => {
             const [step, setStep] = useState(1);
             
@@ -214,62 +741,6 @@
             const [lineupList, setLineupList] = useState([]);
 
             useEffect(() => { window.scrollTo(0, 0); }, [step]);
-
-            const downloadTemplate = () => {
-                const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-                const header = "氏名,クラス,性別,タイム,身長,チーム指定(任意)\n";
-                const row1 = "佐藤太郎,1,男,8.5,140.5,\n";
-                const row2 = "鈴木花子,1,女,9.2,138.0,赤\n";
-                const blob = new Blob([bom, header + row1 + row2], { type: "text/csv" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "組み分け入力用テンプレート.csv";
-                a.click();
-                URL.revokeObjectURL(url);
-            };
-
-            const parseData = (input) => {
-                if (!input) return [];
-                const lines = input.trim().split(/\r?\n/);
-                const headerKeywords = ['氏名', '名前', 'クラス', '組', '性別', 'タイム', '時間', '身長', 'チーム指定', 'チーム'];
-
-                return lines.map((line, idx) => {
-                    if (!line.trim()) return null;
-                    let parts = line.split(/[\t,]+/);
-                    if (parts.length < 2 && line.includes(' ')) parts = line.split(/\s+/);
-                    parts = parts.map(p => p.trim());
-                    if (parts.length < 2) return null;
-
-                    const isHeader = parts.some(part => headerKeywords.some(kw => part.includes(kw)));
-                    if (isHeader) return null;
-
-                    const rawTime = parts[3];
-                    const rawHeight = parts[4];
-
-                    let timeVal = 0;
-                    if (rawTime !== undefined && rawTime !== '') {
-                        const parsed = parseFloat(rawTime);
-                        timeVal = isNaN(parsed) ? 0 : parsed;
-                    }
-
-                    let heightVal = 0;
-                    if (rawHeight !== undefined && rawHeight !== '') {
-                        const parsed = parseFloat(rawHeight);
-                        heightVal = isNaN(parsed) ? 0 : parsed;
-                    }
-
-                    return {
-                        id: idx,
-                        name: parts[0] || '',
-                        classNum: parts[1] !== undefined && parts[1] !== '' ? parts[1] : '0',
-                        gender: parts[2] || '不明',
-                        time: timeVal,
-                        height: heightVal,
-                        fixedTeam: parts[5] || '',
-                    };
-                }).filter(d => d !== null);
-            };
 
             const requestAssignTeams = () => {
                 const students = parseData(rawInput);
@@ -464,474 +935,6 @@
                 setStep(6);
             };
 
-            const PreviewTable = ({ inputData }) => {
-                const parsed = parseData(inputData);
-                if (parsed.length === 0) return null;
-
-                const isZeroOrEmpty = (val) => val === 0 || val === '0' || val === '' || val === null || val === undefined;
-
-                return (
-                    <div className="mt-4 bg-white rounded-lg border border-green-200 overflow-hidden text-sm animate-fade-in shadow-sm">
-                        <div className="bg-green-50 p-3 text-green-800 font-bold border-b border-green-200 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                                <Icons.Check /> プレビュー (全{parsed.length}名)
-                            </div>
-                            <div className="text-xs bg-yellow-100 text-yellow-800 px-2.5 py-1 rounded-full border border-yellow-300 font-normal flex items-center gap-1">
-                                <span>💡 タイム・身長・クラスが「0」「未入力」の箇所は黄色で表示されます</span>
-                            </div>
-                        </div>
-                        <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                            <table className="w-full text-left">
-                                <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase shadow-sm">
-                                    <tr><th className="p-2 pl-4">氏名</th><th className="p-2">クラス</th><th className="p-2">性別</th><th className="p-2">タイム</th><th className="p-2">身長</th><th className="p-2 text-red-600">指定</th></tr>
-                                </thead>
-                                <tbody>
-                                    {parsed.map((r, i) => {
-                                        const highlightClass = "bg-yellow-200 font-bold text-amber-900 border-2 border-yellow-400";
-                                        return (
-                                            <tr key={i} className="border-b bg-white hover:bg-green-50 transition-colors">
-                                                <td className="p-2 pl-4 font-bold">{r.name}</td>
-                                                <td className={`p-2 rounded ${isZeroOrEmpty(r.classNum) ? highlightClass : ''}`}>{r.classNum}</td>
-                                                <td className="p-2">{r.gender}</td>
-                                                <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.time) ? highlightClass : ''}`}>{r.time}</td>
-                                                <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.height) ? highlightClass : ''}`}>{r.height}</td>
-                                                <td className="p-2 text-red-600 font-bold">{r.fixedTeam}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            };
-
-            const ResultTableStep4 = () => {
-                const downloadRoster = () => {
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.json_to_sheet(teamData.map(d => ({
-                        "クラス": d.classNum, "チーム": d.team, "氏名": d.name, "性別": d.gender, "タイム": d.time, "身長": d.height, "順位": d.rankInGroup
-                    })));
-                    XLSX.utils.book_append_sheet(wb, ws, "名簿一覧");
-                    XLSX.writeFile(wb, "運動会_名簿一覧.xlsx");
-                };
-
-                return (
-                    <div className="bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden">
-                        <div className="p-4 bg-green-50 border-b border-green-200 flex justify-between items-center">
-                            <h3 className="font-bold text-green-800 flex items-center gap-2"><Icons.User/> 振り分け結果一覧</h3>
-                            <button onClick={downloadRoster} className="bg-orange-500 hover:bg-orange-600 text-white text-sm px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition shadow-md">
-                                <Icons.Download/> 名簿を保存
-                            </button>
-                        </div>
-                        <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase"><tr><th className="p-3 pl-6">クラス</th><th className="p-3">チーム</th><th className="p-3">氏名</th><th className="p-3">性別</th><th className="p-3">順位</th></tr></thead>
-                                <tbody>
-                                    {teamData.map((d,i)=><tr key={i} className="border-b hover:bg-green-50"><td className="p-3 pl-6">{d.classNum}</td><td className={`p-3 font-bold ${d.team==='赤'?'text-red-500':'text-slate-500'}`}>{d.team}</td><td className="p-3 font-medium">{d.name}</td><td className="p-3">{d.gender}</td><td className="p-3">{d.rankInGroup}</td></tr>)}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            };
-
-            const FinalResultView = () => {
-                const [tab, setTab] = useState('race');
-                const [draggedItem, setDraggedItem] = useState(null);
-                const [dragOverItem, setDragOverItem] = useState(null);
-                const [showPredictions, setShowPredictions] = useState(true);
-
-                const initialRaceList = useMemo(() => JSON.parse(JSON.stringify(raceList)), []);
-                const initialLineupList = useMemo(() => JSON.parse(JSON.stringify(lineupList)), []);
-                const [resetTarget, setResetTarget] = useState(null);
-
-                const requestResetRace = (groupName) => setResetTarget({ type: 'race', group: groupName });
-                const requestResetLineup = (groupName) => setResetTarget({ type: 'lineup', group: groupName });
-
-                const executeReset = () => {
-                    if (!resetTarget) return;
-                    if (resetTarget.type === 'race') {
-                        setRaceList(prev => {
-                            const originalGroups = [...new Set(initialRaceList.map(r => r.group))];
-                            let newList = [];
-                            originalGroups.forEach(grp => {
-                                if (grp === resetTarget.group) {
-                                    newList.push(...initialRaceList.filter(r => r.group === grp));
-                                } else {
-                                    newList.push(...prev.filter(r => r.group === grp));
-                                }
-                            });
-                            return newList;
-                        });
-                    } else if (resetTarget.type === 'lineup') {
-                        setLineupList(prev => {
-                            const originalGroups = [...new Set(initialLineupList.map(r => r.groupKey))];
-                            let newList = [];
-                            originalGroups.forEach(grp => {
-                                if (grp === resetTarget.group) {
-                                    newList.push(...initialLineupList.filter(r => r.groupKey === grp));
-                                } else {
-                                    newList.push(...prev.filter(r => r.groupKey === grp));
-                                }
-                            });
-                            return newList;
-                        });
-                    }
-                    setResetTarget(null);
-                };
-
-                const onDragStart = (e, type, item) => {
-                    setDraggedItem({ type, item });
-                    if (e.dataTransfer) {
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", "");
-                    }
-                };
-
-                const onDragOver = (e, type, item) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!draggedItem || draggedItem.type !== type) return;
-
-                    if (type === 'race') {
-                        if (!dragOverItem || dragOverItem.type !== 'race' || dragOverItem.group !== item.group || dragOverItem.raceNo !== item.raceNo || dragOverItem.lane !== item.lane) {
-                            setDragOverItem({ type: 'race', ...item });
-                        }
-                    } else if (type === 'lineup') {
-                        if (!dragOverItem || dragOverItem.type !== 'lineup' || dragOverItem.groupKey !== item.groupKey || dragOverItem.row !== item.row || dragOverItem.column !== item.column) {
-                            setDragOverItem({ type: 'lineup', ...item });
-                        }
-                    } else if (type === 'raceRow') {
-                        if (!dragOverItem || dragOverItem.type !== 'raceRow' || dragOverItem.group !== item.group || dragOverItem.raceNo !== item.raceNo) {
-                            setDragOverItem({ type: 'raceRow', ...item });
-                        }
-                    }
-                };
-
-                const onDragLeave = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragOverItem(null);
-                };
-
-                const onDrop = (e, type, targetItem) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragOverItem(null);
-                    if (!draggedItem || draggedItem.type !== type) return;
-
-                    const sourceItem = draggedItem.item;
-                    if (type === 'race') {
-                        setRaceList(prev => {
-                            const newList = [...prev];
-                            const sIdx = newList.findIndex(r => r.group === sourceItem.group && r.raceNo === sourceItem.raceNo && r.lane === sourceItem.lane);
-                            const tIdx = newList.findIndex(r => r.group === targetItem.group && r.raceNo === targetItem.raceNo && r.lane === targetItem.lane);
-                            if (sIdx === -1 || tIdx === -1) return prev;
-
-                            const sTemp = { ...newList[sIdx] };
-                            const tTemp = { ...newList[tIdx] };
-                            newList[sIdx] = { ...tTemp, group: sTemp.group, raceNo: sTemp.raceNo, lane: sTemp.lane };
-                            newList[tIdx] = { ...sTemp, group: tTemp.group, raceNo: tTemp.raceNo, lane: tTemp.lane };
-                            return newList;
-                        });
-                    } else if (type === 'lineup') {
-                        setLineupList(prev => {
-                            const newList = [...prev];
-                            const sIdx = newList.findIndex(l => l.groupKey === sourceItem.groupKey && l.row === sourceItem.row && l.column === sourceItem.column);
-                            const tIdx = newList.findIndex(l => l.groupKey === targetItem.groupKey && l.row === targetItem.row && l.column === targetItem.column);
-                            if (sIdx === -1 || tIdx === -1) return prev;
-
-                            const sTemp = { ...newList[sIdx] };
-                            const tTemp = { ...newList[tIdx] };
-                            newList[sIdx] = { ...tTemp, groupKey: sTemp.groupKey, row: sTemp.row, column: sTemp.column };
-                            newList[tIdx] = { ...sTemp, groupKey: tTemp.groupKey, row: tTemp.row, column: tTemp.column };
-                            return newList;
-                        });
-                    } else if (type === 'raceRow') {
-                        setRaceList(prev => prev.map(r => {
-                            if (r.group !== sourceItem.group) return r; 
-                            if (r.raceNo === sourceItem.raceNo) return { ...r, raceNo: targetItem.raceNo };
-                            if (r.raceNo === targetItem.raceNo) return { ...r, raceNo: sourceItem.raceNo };
-                            return r;
-                        }));
-                    }
-                    setDraggedItem(null);
-                };
-
-                const downloadRaceData = () => {
-                    const wb = XLSX.utils.book_new();
-                    const groups = [...new Set(raceList.map(r => r.group))];
-                    groups.forEach(grp => {
-                        const grpRaces = raceList.filter(r => r.group === grp);
-                        const raceNos = [...new Set(grpRaces.map(r => r.raceNo))].sort((a,b)=>a-b);
-                        const sheetData = [];
-                        raceNos.forEach(rNo => {
-                            const runners = grpRaces.filter(r => r.raceNo === rNo).sort((a,b)=>a.lane - b.lane);
-                            const row = { "レース": `第${rNo}R` };
-                            runners.forEach(r => { row[`コース${r.lane}`] = r.name; });
-                            sheetData.push(row);
-                        });
-                        const ws = XLSX.utils.json_to_sheet(sheetData);
-                        XLSX.utils.book_append_sheet(wb, ws, `${grp}_徒競走`);
-                    });
-                    XLSX.writeFile(wb, "運動会_徒競走リスト.xlsx");
-                };
-
-                const downloadLineupData = () => {
-                    const wb = XLSX.utils.book_new();
-                    const groups = [...new Set(lineupList.map(l => l.groupKey))];
-                    groups.forEach(grp => {
-                        const members = lineupList.filter(l => l.groupKey === grp);
-                        const sheetData = [];
-                        const maxRow = Math.max(...members.map(m => m.row));
-                        for(let r = 1; r <= maxRow; r++) {
-                            const rowObj = {};
-                            const rowMembers = members.filter(m => m.row === r);
-                            rowMembers.forEach(m => { rowObj[`列${m.column}`] = m.name; });
-                            sheetData.push(rowObj);
-                        }
-                        const ws = XLSX.utils.json_to_sheet(sheetData);
-                        XLSX.utils.book_append_sheet(wb, ws, grp);
-                    });
-                    XLSX.writeFile(wb, "運動会_背の順リスト.xlsx");
-                };
-
-                return (
-                    <div className="bg-white rounded-xl shadow-lg border border-green-200 overflow-hidden print:shadow-none print:border-none print:m-0 print:p-0">
-                        <div className="flex border-b bg-green-50 print:hidden items-center">
-                            <div className="flex flex-1">
-                                {raceEnabled && <button onClick={()=>setTab('race')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='race'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Run/> 徒競走リスト</button>}
-                                {lineupEnabled && <button onClick={()=>setTab('lineup')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='lineup'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Users/> 背の順リスト</button>}
-                            </div>
-                            
-                            <div className="px-4 flex gap-3">
-                                {tab === 'race' && (
-                                    <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">
-                                        <input type="checkbox" checked={showPredictions} onChange={(e)=>setShowPredictions(e.target.checked)} className="w-4 h-4 accent-green-600"/>
-                                        👑 順位予想枠を表示
-                                    </label>
-                                )}
-                                <button onClick={() => window.print()} className="flex items-center gap-2 text-sm font-bold bg-slate-700 text-white px-4 py-1.5 rounded-lg shadow hover:bg-slate-800 transition">
-                                    🖨️ 印刷
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div className="p-6 min-h-[300px] bg-white print:p-0">
-                            {tab === 'race' && raceEnabled && (
-                                <div className="animate-fade-in space-y-8">
-                                    <div className="flex justify-between items-center mb-4 print:hidden">
-                                        <div className="flex flex-col gap-1">
-                                            <h3 className="font-bold text-green-800 text-lg flex items-center gap-2">🏃 徒競走組み分け</h3>
-                                            <span className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold">💡 人の入れ替えや、左側の「第◯R」をドラッグしてレースごと入れ替えも可能です！</span>
-                                        </div>
-                                        <button onClick={downloadRaceData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
-                                            <Icons.Download/> 走順を保存
-                                        </button>
-                                    </div>
-                                    
-                                    {[...new Set(raceList.map(r=>r.group))].map(grp => {
-                                        const raceMembersForGroup = raceList.filter(r => r.group === grp);
-                                        const maxLanes = Math.max(...raceMembersForGroup.map(r => r.lane));
-
-                                        return (
-                                            <div key={grp} className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden print:border-none print:shadow-none print:mb-8 page-break-inside-avoid">
-                                                <div className="bg-green-50 px-4 py-3 border-b border-green-200 flex justify-between items-center print:border-b-2 print:bg-transparent">
-                                                    <div className="font-bold text-green-800 flex items-center gap-2 print:text-xl">
-                                                        <span className="w-2 h-6 bg-green-500 rounded-full"></span>
-                                                        {grp} 徒競走
-                                                    </div>
-                                                    <button onClick={() => requestResetRace(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
-                                                        🔄 リセット
-                                                    </button>
-                                                </div>
-                                                
-                                                <div className="overflow-x-auto print:overflow-visible custom-scrollbar">
-                                                    <div className="p-4 min-w-max space-y-1 print:p-0 print:mt-2">
-                                                        {/* 表ヘッダー */}
-                                                        <div className="flex gap-2 p-2 border-b-2 border-green-200 bg-green-50/50 print:bg-transparent">
-                                                            <div className="w-20 shrink-0"></div>
-                                                            {[...Array(maxLanes)].map((_, i) => (
-                                                                <div key={i} className="w-28 text-center font-bold text-green-700 text-sm">
-                                                                    {i + 1}コース
-                                                                </div>
-                                                            ))}
-                                                        </div>
-
-                                                        {/* 各レースの行 */}
-                                                        {[...new Set(raceMembersForGroup.map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => {
-                                                            const raceMembers = raceMembersForGroup.filter(r => r.raceNo === rNo);
-                                                            const validTimes = raceMembers.filter(m => m.time > 0).map(m => m.time).sort((a, b) => a - b);
-                                                            
-                                                            // レース丸ごとドラッグオーバー時の判定
-                                                            const isRowDragOver = dragOverItem && dragOverItem.type === 'raceRow' && dragOverItem.group === grp && dragOverItem.raceNo === rNo;
-                                                            
-                                                            return (
-                                                                <div 
-                                                                    key={rNo} 
-                                                                    className={`flex gap-2 p-2 border-b border-slate-100 hover:bg-slate-50 transition-colors print:border-slate-300 print:hover:bg-transparent ${isRowDragOver ? 'bg-green-50/80 border-dashed border-2 border-green-400 scale-[1.01] shadow-sm z-10 opacity-90' : ''}`}
-                                                                    onDragOver={(e) => onDragOver(e, 'raceRow', { group: grp, raceNo: rNo })}
-                                                                    onDragLeave={onDragLeave}
-                                                                    onDrop={(e) => onDrop(e, 'raceRow', { group: grp, raceNo: rNo })}
-                                                                >
-                                                                    {/* ドラッグ用レースバッジ */}
-                                                                    <div 
-                                                                        className="w-20 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing print:cursor-auto"
-                                                                        draggable
-                                                                        onDragStart={(e) => onDragStart(e, 'raceRow', { group: grp, raceNo: rNo })}
-                                                                        title="ドラッグしてレースの順番を入れ替え"
-                                                                    >
-                                                                        <span className="bg-green-100 hover:bg-green-200 text-green-800 text-xs font-bold px-3 py-1 rounded shadow-sm print:shadow-none print:bg-transparent flex items-center gap-1 transition-colors">
-                                                                            <span className="opacity-50 text-[10px] print:hidden">↕</span>
-                                                                            第{rNo}R
-                                                                        </span>
-                                                                    </div>
-                                                                    
-                                                                    {/* 各レーンの個人表示 */}
-                                                                    {[...Array(maxLanes)].map((_, i) => {
-                                                                        const lane = i + 1;
-                                                                        const r = raceMembers.find(m => m.lane === lane);
-                                                                        
-                                                                        if (!r) return <div key={`empty-${lane}`} className="w-28 shrink-0 p-2"></div>;
-
-                                                                        const isDragOver = dragOverItem && dragOverItem.type === 'race' && dragOverItem.group === r.group && dragOverItem.raceNo === r.raceNo && dragOverItem.lane === r.lane;
-                                                                        const rank = r.time > 0 ? validTimes.indexOf(r.time) + 1 : 99;
-                                                                        
-                                                                        // ベーススタイル（赤の場合は薄ピンクをキープ）
-                                                                        const baseStyle = r.team === '赤' ? "bg-red-50 text-red-800" : "bg-white text-slate-800";
-                                                                        
-                                                                        let borderStyle = "border border-slate-300";
-                                                                        if (showPredictions && r.time > 0) {
-                                                                            if (rank === 1) borderStyle = "border-[3px] border-[#ffd700] shadow-sm"; // 金
-                                                                            else if (rank === 2) borderStyle = "border-[3px] border-[#c0c0c0] shadow-sm"; // 銀
-                                                                            else if (rank === 3) borderStyle = "border-[3px] border-[#b87333] shadow-sm"; // 銅 (ブロンズ色)
-                                                                            else if (r.team === '赤') borderStyle = "border border-red-300";
-                                                                        } else {
-                                                                            if (r.team === '赤') borderStyle = "border border-red-300";
-                                                                        }
-
-                                                                        return (
-                                                                            <div 
-                                                                                key={r.lane} 
-                                                                                draggable 
-                                                                                onDragStart={(e) => onDragStart(e, 'race', r)}
-                                                                                onDragOver={(e) => onDragOver(e, 'race', r)}
-                                                                                onDragLeave={onDragLeave}
-                                                                                onDrop={(e) => onDrop(e, 'race', r)}
-                                                                                className={`w-28 p-2 rounded text-center shrink-0 cursor-grab active:cursor-grabbing transition-colors duration-75 print:shadow-none ${baseStyle} ${borderStyle} ${isDragOver ? 'opacity-50 border-dashed border-green-500 z-10 bg-green-50' : ''}`}
-                                                                            >
-                                                                                <div className="font-bold text-sm truncate print:text-base" title={r.name}>{r.name}</div>
-                                                                                <div className="text-[10px] opacity-70 font-mono mt-0.5 print:hidden">{r.time > 0 ? `${r.time} 秒` : '-'}</div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {tab === 'lineup' && lineupEnabled && (
-                                <div className="animate-fade-in space-y-8">
-                                    <div className="flex justify-between items-center mb-4 print:hidden">
-                                        <div className="flex flex-col gap-1">
-                                            <h3 className="font-bold text-green-800 text-lg flex items-center gap-2">🧍 背の順隊形</h3>
-                                            <span className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold">💡 ドラッグ＆ドロップで入れ替えできます</span>
-                                        </div>
-                                        <button onClick={downloadLineupData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
-                                            <Icons.Download/> 背の順を保存
-                                        </button>
-                                    </div>
-                                    <div className="grid gap-6 md:grid-cols-2 max-h-[600px] overflow-y-auto custom-scrollbar p-1 print:overflow-visible print:max-h-none print:grid-cols-2 print:gap-4">
-                                        {[...new Set(lineupList.map(l=>l.groupKey))].map(grp => (
-                                            <div key={grp} className="bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm relative print:shadow-none print:bg-transparent page-break-inside-avoid">
-                                                <h4 className="font-bold text-green-700 mb-3 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`w-2 h-6 rounded ${grp.includes('赤')?'bg-red-500':'bg-white border border-slate-300'}`}></span>
-                                                        {grp.replace('_', ' ')}
-                                                    </div>
-                                                    <button onClick={() => requestResetLineup(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
-                                                        🔄 リセット
-                                                    </button>
-                                                </h4>
-                                                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${lineupColumns}, 1fr)` }}>
-                                                    {[...Array(lineupColumns)].map((_, i) => <div key={i} className="text-center text-xs text-green-600 font-bold">{i+1}列</div>)}
-                                                    
-                                                    {lineupList.filter(l=>l.groupKey===grp).map((l, idx) => {
-                                                        const isDragOver = dragOverItem && dragOverItem.type === 'lineup' && dragOverItem.groupKey === l.groupKey && dragOverItem.row === l.row && dragOverItem.column === l.column;
-                                                        const bgClass = l.team==='赤' ? 'bg-red-50 text-red-800 border-red-300' : 'bg-white text-slate-700 border-slate-300';
-                                                        
-                                                        return (
-                                                            <div 
-                                                                key={idx} 
-                                                                draggable
-                                                                onDragStart={(e) => onDragStart(e, 'lineup', l)}
-                                                                onDragOver={(e) => onDragOver(e, 'lineup', l)}
-                                                                onDragLeave={onDragLeave}
-                                                                onDrop={(e) => onDrop(e, 'lineup', l)}
-                                                                className={`p-2 text-center rounded border text-sm font-bold truncate cursor-grab active:cursor-grabbing transition-colors duration-75 print:shadow-none ${bgClass} ${isDragOver ? 'opacity-50 border-dashed border-green-500 bg-green-50' : 'hover:shadow-sm'}`} 
-                                                                style={{ gridColumn: l.column, gridRow: l.row + 1 }}
-                                                            >
-                                                                <div className="print:text-base">{l.name}</div>
-                                                                <div className="text-[10px] font-mono text-slate-400 font-normal mt-0.5 print:hidden">{l.height > 0 ? `${l.height} cm` : '-'}</div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* リセット用の独自確認モーダル */}
-                        {resetTarget && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in print:hidden">
-                                <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 border-2 border-green-200">
-                                    <h3 className="text-lg font-bold text-green-800 mb-2 flex items-center gap-2">
-                                        <Icons.Info /> リセットの確認
-                                    </h3>
-                                    <p className="text-sm text-slate-600 mb-6 font-bold">
-                                        「{resetTarget.group.replace('_', ' ')}」の{resetTarget.type === 'race' ? '徒競走' : '背の順'}を、<br/>最初の状態に戻しますか？
-                                    </p>
-                                    <div className="flex justify-end gap-3">
-                                        <button onClick={() => setResetTarget(null)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-lg transition">キャンセル</button>
-                                        <button onClick={executeReset} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg shadow-md transition">リセットする</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
-            const StepIndicator = () => {
-                const steps = [
-                    { n: 1, t: '基本' }, { n: 2, t: 'ルール' }, { n: 3, t: '入力' }, { n: 4, t: '名簿' }, { n: 5, t: '設定' }, { n: 6, t: '完了' }
-                ];
-                return (
-                    <div className="mb-8 px-4">
-                        <div className="flex items-center justify-between relative max-w-4xl mx-auto">
-                            <div className="absolute top-4 left-0 w-full h-1 bg-green-200 -z-10 rounded"></div>
-                            <div className="absolute top-4 left-0 h-1 bg-green-500 -z-10 rounded transition-all duration-300" style={{ width: `${((step - 1) / 5) * 100}%` }}></div>
-                            {steps.map(s => (
-                                <div key={s.n} className="flex flex-col items-center gap-1 bg-f0fdf4 px-2 z-10">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold border-2 transition-all duration-300 ${step === s.n ? 'border-green-600 bg-white text-green-600 scale-125 shadow-md' : step > s.n ? 'border-green-500 bg-green-500 text-white' : 'border-green-200 bg-white text-green-300'}`}>{step > s.n ? <Icons.Check/> : s.n}</div>
-                                    <span className={`text-[10px] font-bold ${step===s.n?'text-green-700':'text-green-300'}`}>{s.t}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            };
-
             return (
                 <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto flex flex-col">
                     <header className="mb-8 text-center animate-fade-in">
@@ -941,16 +944,13 @@
                         <p className="text-green-600 text-sm">入力データは端末内でのみ処理され、外部サーバーには送信されません。</p>
                     </header>
 
-                    <StepIndicator />
+                    <StepIndicator step={step} />
 
                     <div className="flex-grow animate-fade-in">
-                        {/* STEP 1: 基本条件 */}
                         {step === 1 && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-3xl mx-auto space-y-8">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.Settings/> 基本条件を設定</h2>
-                                
                                 <div className="space-y-6">
-                                    {/* 組み分け単位 */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">組み分け単位</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -958,7 +958,6 @@
                                             <SelectionCard selected={grouping==='class'} onClick={()=>setGrouping('class')} icon={Icons.Class} title="クラスごと" desc="各クラス内で均等に分けます" />
                                         </div>
                                     </div>
-                                    {/* モード */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">モード</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -966,7 +965,6 @@
                                             <SelectionCard selected={mode==='mixed'} onClick={()=>setMode('mixed')} icon={Icons.Mixed} title="男女混合" desc="性別に関係なく全体で分けます" />
                                         </div>
                                     </div>
-                                    {/* 基準 */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">並び替え基準</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -979,7 +977,6 @@
                             </div>
                         )}
 
-                        {/* STEP 2: ルール */}
                         {step === 2 && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-3xl mx-auto space-y-8">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.Sort/> チーム分けルールの選択</h2>
@@ -1008,7 +1005,6 @@
                             </div>
                         )}
 
-                        {/* STEP 3: 入力 */}
                         {step === 3 && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-4xl mx-auto space-y-6">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.User/> データの入力</h2>
@@ -1017,7 +1013,6 @@
                                         <p className="font-bold mb-1">【Excelからの列コピー順序】</p>
                                         <p className="font-mono text-xs md:text-sm whitespace-nowrap overflow-x-auto">A:氏名 | B:クラス | C:性別 | D:タイム | E:身長 | <span className="text-red-600 font-bold">F:チーム指定</span></p>
                                         <p className="text-xs text-red-500 mt-1 font-bold">※F列に『赤』『白』と入力すると、自動振り分けされずにそのチームになります。</p>
-                                        <p className="text-xs text-slate-500 mt-1">※入力欄で列がズレて見えても、下のプレビュー表が合っていれば問題ありません。</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>setRawInput(SAMPLE_DATA)} className="text-xs bg-white text-green-600 border border-green-200 px-3 py-2 rounded shadow-sm hover:bg-green-50 font-bold">サンプル入力</button>
@@ -1035,14 +1030,13 @@
                             </div>
                         )}
 
-                        {/* STEP 4: 確認 */}
                         {step === 4 && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-4xl mx-auto space-y-6">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.Check/> 結果確認</h2>
                                 <div className="bg-green-50 p-4 rounded-lg text-green-800 text-sm border border-green-100 flex items-center gap-2 font-bold">
                                     <Icons.Check/> チーム分けが完了しました。データを確認し、問題なければ出力設定に進んでください。
                                 </div>
-                                <ResultTableStep4 />
+                                <ResultTableStep4 teamData={teamData} />
                                 <div className="flex justify-between pt-4">
                                     <button onClick={()=>setStep(3)} className="text-green-600 font-bold px-6 py-3 rounded-full hover:bg-green-50 flex items-center gap-2"><Icons.ArrowLeft/> 戻る</button>
                                     <button onClick={()=>setStep(5)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-full shadow-lg transition transform hover:-translate-y-1 flex items-center gap-2">次へ(出力設定) <Icons.ArrowRight/></button>
@@ -1050,12 +1044,10 @@
                             </div>
                         )}
 
-                        {/* STEP 5: 出力設定 */}
                         {step === 5 && (
                             <div className="bg-white p-8 rounded-2xl shadow-sm border border-green-200 max-w-3xl mx-auto space-y-8">
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.Settings/> 出力詳細設定</h2>
                                 
-                                {/* 徒競走設定 */}
                                 <div className="border border-green-200 p-6 rounded-xl bg-green-50 hover:border-green-300 transition-colors">
                                     <label className="font-bold flex items-center gap-3 cursor-pointer mb-4 text-lg text-green-800 border-b border-green-200 pb-2">
                                         <input type="checkbox" checked={raceEnabled} onChange={(e)=>setRaceEnabled(e.target.checked)} className="w-6 h-6 accent-green-600"/>
@@ -1063,7 +1055,6 @@
                                     </label>
                                     {raceEnabled && (
                                         <div className="ml-2 space-y-6 animate-fade-in">
-                                            {/* モード選択 */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">モード</label>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -1080,7 +1071,6 @@
                                     )}
                                 </div>
 
-                                {/* 背の順設定 */}
                                 <div className="border border-green-200 p-6 rounded-xl bg-green-50 hover:border-green-300 transition-colors">
                                     <label className="font-bold flex items-center gap-3 cursor-pointer mb-4 text-lg text-green-800 border-b border-green-200 pb-2">
                                         <input type="checkbox" checked={lineupEnabled} onChange={(e)=>setLineupEnabled(e.target.checked)} className="w-6 h-6 accent-green-600"/>
@@ -1088,7 +1078,6 @@
                                     </label>
                                     {lineupEnabled && (
                                         <div className="ml-2 space-y-6 animate-fade-in">
-                                            {/* 単位 */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">① 並び順のグループ単位</label>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -1096,7 +1085,6 @@
                                                     <SelectionCard selected={lineupGrouping==='grade'} onClick={()=>setLineupGrouping('grade')} icon={Icons.Grade} title="学年通し" desc="赤組全体, 白組全体" />
                                                 </div>
                                             </div>
-                                            {/* モード */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">② 並び方</label>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -1110,11 +1098,6 @@
                                                     <input type="number" min="1" max="20" value={lineupColumns} onChange={(e)=>setLineupColumns(Number(e.target.value))} className="border-2 border-green-200 p-2 w-20 text-center rounded-lg font-bold text-lg focus:border-green-500 focus:outline-none"/>
                                                     <span className="font-bold text-green-700">列</span>
                                                 </div>
-                                                {lineupMode==='separate' && (
-                                                    <p className="text-xs text-green-600 mt-2 font-bold">
-                                                        💡 男女別の場合: 男子 {Math.floor(lineupColumns/2) || 1}列 ＋ 女子 {lineupColumns - (Math.floor(lineupColumns/2) || 1)}列 ＝ 合計 {lineupColumns}列 になります。
-                                                    </p>
-                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -1129,13 +1112,18 @@
                             </div>
                         )}
 
-                        {/* STEP 6: 完了 */}
                         {step === 6 && (
                             <div className="bg-white p-8 rounded-2xl shadow-xl border border-green-200 max-w-6xl mx-auto space-y-6 animate-fade-in print:shadow-none print:border-none print:m-0 print:p-0">
                                 <h2 className="text-2xl font-black text-green-800 border-b border-green-100 pb-4 flex items-center gap-2 text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-teal-600 print:hidden">
                                     🎉 作成完了
                                 </h2>
-                                <FinalResultView />
+                                
+                                <FinalResultView 
+                                    raceList={raceList} setRaceList={setRaceList}
+                                    lineupList={lineupList} setLineupList={setLineupList}
+                                    raceEnabled={raceEnabled} lineupEnabled={lineupEnabled} lineupColumns={lineupColumns}
+                                />
+                                
                                 <div className="text-center mt-8 print:hidden">
                                     <button onClick={()=>setStep(5)} className="text-slate-500 border-2 border-slate-200 px-6 py-3 rounded-full hover:bg-slate-50 hover:text-slate-700 font-bold transition">設定を変更して再作成</button>
                                 </div>
