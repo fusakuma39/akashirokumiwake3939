@@ -529,6 +529,91 @@
 
             const FinalResultView = () => {
                 const [tab, setTab] = useState('race');
+                const [draggedItem, setDraggedItem] = useState(null);
+                const [dragOverItem, setDragOverItem] = useState(null);
+                
+                // --- 追加: 順位予想表示のトグルステート ---
+                const [showPredictions, setShowPredictions] = useState(true);
+
+                const initialRaceList = useMemo(() => JSON.parse(JSON.stringify(raceList)), []);
+                const initialLineupList = useMemo(() => JSON.parse(JSON.stringify(lineupList)), []);
+
+                const resetRaceGroup = (groupName) => {
+                    if(!window.confirm(`「${groupName}」の徒競走を最初の状態にリセットしますか？`)) return;
+                    setRaceList(prev => {
+                        const others = prev.filter(r => r.group !== groupName);
+                        const targets = initialRaceList.filter(r => r.group === groupName);
+                        return [...others, ...targets];
+                    });
+                };
+
+                const resetLineupGroup = (groupName) => {
+                    if(!window.confirm(`「${groupName.replace('_', ' ')}」の背の順を最初の状態にリセットしますか？`)) return;
+                    setLineupList(prev => {
+                        const others = prev.filter(l => l.groupKey !== groupName);
+                        const targets = initialLineupList.filter(l => l.groupKey === groupName);
+                        return [...others, ...targets];
+                    });
+                };
+
+                const onDragStart = (e, type, item) => {
+                    setDraggedItem({ type, item });
+                    e.dataTransfer.effectAllowed = "move";
+                };
+
+                const onDragOver = (e, type, item) => {
+                    e.preventDefault();
+                    if (draggedItem && draggedItem.type === type) {
+                        if (type === 'race') {
+                            if (!dragOverItem || dragOverItem.group !== item.group || dragOverItem.raceNo !== item.raceNo || dragOverItem.lane !== item.lane) {
+                                setDragOverItem(item);
+                            }
+                        } else if (type === 'lineup') {
+                            if (!dragOverItem || dragOverItem.groupKey !== item.groupKey || dragOverItem.row !== item.row || dragOverItem.column !== item.column) {
+                                setDragOverItem(item);
+                            }
+                        }
+                    }
+                };
+
+                const onDragLeave = () => setDragOverItem(null);
+
+                const onDrop = (e, type, targetItem) => {
+                    e.preventDefault();
+                    setDragOverItem(null);
+                    if (!draggedItem || draggedItem.type !== type) return;
+
+                    const sourceItem = draggedItem.item;
+
+                    if (type === 'race') {
+                        setRaceList(prev => {
+                            const newList = [...prev];
+                            const sIdx = newList.findIndex(r => r.group === sourceItem.group && r.raceNo === sourceItem.raceNo && r.lane === sourceItem.lane);
+                            const tIdx = newList.findIndex(r => r.group === targetItem.group && r.raceNo === targetItem.raceNo && r.lane === targetItem.lane);
+                            if (sIdx === -1 || tIdx === -1) return prev;
+
+                            const sTemp = { ...newList[sIdx] };
+                            const tTemp = { ...newList[tIdx] };
+                            newList[sIdx] = { ...tTemp, group: sTemp.group, raceNo: sTemp.raceNo, lane: sTemp.lane };
+                            newList[tIdx] = { ...sTemp, group: tTemp.group, raceNo: tTemp.raceNo, lane: tTemp.lane };
+                            return newList;
+                        });
+                    } else if (type === 'lineup') {
+                        setLineupList(prev => {
+                            const newList = [...prev];
+                            const sIdx = newList.findIndex(l => l.groupKey === sourceItem.groupKey && l.row === sourceItem.row && l.column === sourceItem.column);
+                            const tIdx = newList.findIndex(l => l.groupKey === targetItem.groupKey && l.row === targetItem.row && l.column === targetItem.column);
+                            if (sIdx === -1 || tIdx === -1) return prev;
+
+                            const sTemp = { ...newList[sIdx] };
+                            const tTemp = { ...newList[tIdx] };
+                            newList[sIdx] = { ...tTemp, groupKey: sTemp.groupKey, row: sTemp.row, column: sTemp.column };
+                            newList[tIdx] = { ...sTemp, groupKey: tTemp.groupKey, row: tTemp.row, column: tTemp.column };
+                            return newList;
+                        });
+                    }
+                    setDraggedItem(null);
+                };
 
                 const downloadRaceData = () => {
                     const wb = XLSX.utils.book_new();
@@ -569,80 +654,190 @@
                 };
 
                 return (
-                    <div className="bg-white rounded-xl shadow-lg border border-green-200 overflow-hidden">
-                        <div className="flex border-b bg-green-50">
-                            {raceEnabled && <button onClick={()=>setTab('race')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='race'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Run/> 徒競走リスト</button>}
-                            {lineupEnabled && <button onClick={()=>setTab('lineup')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='lineup'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Users/> 背の順リスト</button>}
+                    <div className="bg-white rounded-xl shadow-lg border border-green-200 overflow-hidden print:shadow-none print:border-none print:m-0 print:p-0">
+                        {/* タブと操作メニュー */}
+                        <div className="flex border-b bg-green-50 print:hidden items-center">
+                            <div className="flex flex-1">
+                                {raceEnabled && <button onClick={()=>setTab('race')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='race'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Run/> 徒競走リスト</button>}
+                                {lineupEnabled && <button onClick={()=>setTab('lineup')} className={`flex-1 py-4 font-bold text-sm flex items-center justify-center gap-2 ${tab==='lineup'?'bg-white border-t-4 border-green-500 text-green-700':'text-green-600 hover:bg-green-100'}`}><Icons.Users/> 背の順リスト</button>}
+                            </div>
+                            
+                            {/* 追加: 全体操作ボタン群 */}
+                            <div className="px-4 flex gap-3">
+                                {tab === 'race' && (
+                                    <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition">
+                                        <input type="checkbox" checked={showPredictions} onChange={(e)=>setShowPredictions(e.target.checked)} className="w-4 h-4 accent-green-600"/>
+                                        金銀銅を表示
+                                    </label>
+                                )}
+                                <button onClick={() => window.print()} className="flex items-center gap-2 text-sm font-bold bg-slate-700 text-white px-4 py-1.5 rounded-lg shadow hover:bg-slate-800 transition">
+                                    🖨️ 印刷
+                                </button>
+                            </div>
                         </div>
                         
-                        <div className="p-6 min-h-[300px] bg-white">
+                        <div className="p-6 min-h-[300px] bg-white print:p-0">
+                            {/* 徒競走タブ */}
                             {tab === 'race' && raceEnabled && (
                                 <div className="animate-fade-in space-y-8">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="font-bold text-green-800 text-lg">🏃 徒競走組み分け</h3>
+                                    <div className="flex justify-between items-center mb-4 print:hidden">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="font-bold text-green-800 text-lg">🏃 徒競走組み分け</h3>
+                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">💡 カードをドラッグ＆ドロップで入れ替えできます</span>
+                                        </div>
                                         <button onClick={downloadRaceData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
                                             <Icons.Download/> 走順を保存
                                         </button>
                                     </div>
                                     
-                                    {[...new Set(raceList.map(r=>r.group))].map(grp => (
-                                        <div key={grp} className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
-                                            <div className="bg-green-50 px-4 py-3 border-b border-green-200 font-bold text-green-800 flex items-center gap-2">
-                                                <span className="w-2 h-6 bg-green-500 rounded-full"></span>
-                                                {grp}
-                                            </div>
-                                            
-                                            <div className="overflow-x-auto custom-scrollbar">
-                                                <div className="p-4 min-w-max space-y-3">
-                                                    {[...new Set(raceList.filter(r=>r.group===grp).map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => (
-                                                        <div key={rNo} className="flex items-start gap-4 p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                                                            <div className="w-24 shrink-0 pt-2">
-                                                                <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">
-                                                                    第{rNo}レース
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex gap-3">
-                                                                {raceList.filter(r=>r.group===grp && r.raceNo===rNo).sort((a,b)=>a.lane-b.lane).map(r => (
-                                                                    <div key={r.lane} className={`w-28 p-2 rounded border text-center shrink-0 shadow-sm ${r.team==='赤'?'bg-red-50 border-red-200 text-red-700':'bg-white border-slate-200 text-slate-700'}`}>
-                                                                        <div className="text-[10px] opacity-60 mb-1 font-bold">{r.lane}コース</div>
-                                                                        <div className="font-bold text-sm truncate" title={r.name}>{r.name}</div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
+                                    {[...new Set(raceList.map(r=>r.group))].map(grp => {
+                                        // コース（レーン）の最大数を取得して表の列数を決める
+                                        const raceMembersForGroup = raceList.filter(r => r.group === grp);
+                                        const maxLanes = Math.max(...raceMembersForGroup.map(r => r.lane));
+
+                                        return (
+                                            <div key={grp} className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden print:border-none print:shadow-none print:mb-8 page-break-inside-avoid">
+                                                <div className="bg-green-50 px-4 py-3 border-b border-green-200 flex justify-between items-center print:bg-transparent print:border-b-2 print:border-black">
+                                                    <div className="font-bold text-green-800 flex items-center gap-2 print:text-black print:text-xl">
+                                                        <span className="w-2 h-6 bg-green-500 rounded-full print:bg-black"></span>
+                                                        {grp} 徒競走
+                                                    </div>
+                                                    <button onClick={() => resetRaceGroup(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
+                                                        🔄 リセット
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="overflow-x-auto print:overflow-visible">
+                                                    <div className="p-4 min-w-max space-y-1 print:p-0 print:mt-2">
+                                                        
+                                                        {/* 表のヘッダー行（コース名） */}
+                                                        <div className="flex gap-2 p-2 border-b-2 border-green-200 bg-green-50/30 print:bg-transparent print:border-black">
+                                                            <div className="w-20 shrink-0"></div>
+                                                            {[...Array(maxLanes)].map((_, i) => (
+                                                                <div key={i} className="w-28 text-center font-bold text-green-700 text-sm print:text-black">
+                                                                    {i + 1}コース
+                                                                </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
+
+                                                        {/* 各レースの行 */}
+                                                        {[...new Set(raceMembersForGroup.map(r=>r.raceNo))].sort((a,b)=>a-b).map(rNo => {
+                                                            const raceMembers = raceMembersForGroup.filter(r => r.raceNo === rNo);
+                                                            
+                                                            // そのレースの有効なタイムを抽出し、昇順に並べて順位付けのベースにする
+                                                            const validTimes = raceMembers.filter(m => m.time > 0).map(m => m.time).sort((a, b) => a - b);
+                                                            
+                                                            return (
+                                                                <div key={rNo} className="flex gap-2 p-2 border-b border-slate-100 hover:bg-slate-50 transition-colors print:border-slate-300 print:hover:bg-transparent">
+                                                                    <div className="w-20 shrink-0 flex items-center justify-center">
+                                                                        <span className="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded shadow-sm print:bg-transparent print:border print:border-black print:shadow-none print:text-black">
+                                                                            第{rNo}R
+                                                                        </span>
+                                                                    </div>
+                                                                    
+                                                                    {/* コースごとに固定枠を描画する */}
+                                                                    {[...Array(maxLanes)].map((_, i) => {
+                                                                        const lane = i + 1;
+                                                                        const r = raceMembers.find(m => m.lane === lane);
+                                                                        
+                                                                        // 空のコース（欠員など）
+                                                                        if (!r) return <div key={`empty-${lane}`} className="w-28 shrink-0 p-2"></div>;
+
+                                                                        const isDragOver = dragOverItem && dragOverItem.group === r.group && dragOverItem.raceNo === r.raceNo && dragOverItem.lane === r.lane;
+                                                                        
+                                                                        // 順位判定（同率考慮: Array.indexOf を使えば同タイムは同じ順位になり、次の順位は飛ぶ）
+                                                                        const rank = r.time > 0 ? validTimes.indexOf(r.time) + 1 : 99;
+                                                                        
+                                                                        // 背景色
+                                                                        const baseStyle = r.team === '赤' ? "bg-red-50 text-red-700" : "bg-white text-slate-700";
+                                                                        
+                                                                        // 枠線（金・銀・銅を表現）※銅はリアルなブロンズ色 #b87333
+                                                                        let borderStyle = "border border-slate-200";
+                                                                        if (showPredictions && r.time > 0) {
+                                                                            if (rank === 1) borderStyle = "border-[3px] border-[#ffd700] bg-yellow-50/30"; // 金
+                                                                            else if (rank === 2) borderStyle = "border-[3px] border-[#c0c0c0] bg-slate-50/50"; // 銀
+                                                                            else if (rank === 3) borderStyle = "border-[3px] border-[#b87333] bg-orange-50/30"; // 銅
+                                                                            else if (r.team === '赤') borderStyle = "border border-red-200";
+                                                                        } else {
+                                                                            if (r.team === '赤') borderStyle = "border border-red-200";
+                                                                        }
+                                                                        
+                                                                        // 印刷時は枠の色味を少し調整（黒白印刷でも見やすいように）
+                                                                        const printStyle = "print:border print:border-slate-400 print:bg-transparent print:text-black print:shadow-none";
+
+                                                                        return (
+                                                                            <div 
+                                                                                key={r.lane} 
+                                                                                draggable 
+                                                                                onDragStart={(e) => onDragStart(e, 'race', r)}
+                                                                                onDragOver={(e) => onDragOver(e, 'race', r)}
+                                                                                onDragLeave={onDragLeave}
+                                                                                onDrop={(e) => onDrop(e, 'race', r)}
+                                                                                className={`w-28 p-2 rounded text-center shrink-0 cursor-grab active:cursor-grabbing transition-colors duration-75 ${baseStyle} ${borderStyle} ${printStyle} ${isDragOver ? 'opacity-50 border-dashed border-green-500 z-10' : ''}`}
+                                                                            >
+                                                                                <div className="font-bold text-sm truncate print:text-base" title={r.name}>{r.name}</div>
+                                                                                <div className="text-[10px] opacity-70 font-mono mt-0.5 print:hidden">{r.time > 0 ? `${r.time} 秒` : '-'}</div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
 
+                            {/* 背の順タブ */}
                             {tab === 'lineup' && lineupEnabled && (
-                                <div className="animate-fade-in">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h3 className="font-bold text-green-800 text-lg">🧍 背の順隊形 (グリッド表示)</h3>
+                                <div className="animate-fade-in space-y-8">
+                                    <div className="flex justify-between items-center mb-4 print:hidden">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="font-bold text-green-800 text-lg">🧍 背の順隊形</h3>
+                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">💡 ドラッグ＆ドロップで入れ替えできます</span>
+                                        </div>
                                         <button onClick={downloadLineupData} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-full shadow-lg flex items-center gap-2 transition transform hover:-translate-y-1">
                                             <Icons.Download/> 背の順を保存
                                         </button>
                                     </div>
-                                    <div className="grid gap-6 md:grid-cols-2 max-h-96 overflow-y-auto custom-scrollbar p-1">
+                                    <div className="grid gap-6 md:grid-cols-2 max-h-[600px] overflow-y-auto custom-scrollbar p-1 print:overflow-visible print:max-h-none print:grid-cols-2 print:gap-4">
                                         {[...new Set(lineupList.map(l=>l.groupKey))].map(grp => (
-                                            <div key={grp} className="bg-green-50 p-4 rounded-lg border border-green-200 shadow-sm">
-                                                <h4 className="font-bold text-green-700 mb-3 flex items-center gap-2">
-                                                    <span className={`w-2 h-6 rounded ${grp.includes('赤')?'bg-red-500':'bg-white border border-slate-300'}`}></span>
-                                                    {grp.replace('_', ' ')}
+                                            <div key={grp} className="bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm relative print:bg-transparent print:border-2 print:border-black print:shadow-none page-break-inside-avoid">
+                                                <h4 className="font-bold text-green-700 mb-3 flex items-center justify-between print:text-black">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-2 h-6 rounded print:bg-black ${grp.includes('赤')?'bg-red-500':'bg-white border border-slate-300'}`}></span>
+                                                        {grp.replace('_', ' ')}
+                                                    </div>
+                                                    <button onClick={() => resetLineupGroup(grp)} className="text-xs bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 font-bold py-1 px-3 rounded shadow-sm flex items-center gap-1 transition print:hidden">
+                                                        🔄 リセット
+                                                    </button>
                                                 </h4>
                                                 <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${lineupColumns}, 1fr)` }}>
                                                     {/* ヘッダー列 */}
-                                                    {[...Array(lineupColumns)].map((_, i) => <div key={i} className="text-center text-xs text-green-600 font-bold">{i+1}列</div>)}
+                                                    {[...Array(lineupColumns)].map((_, i) => <div key={i} className="text-center text-xs text-green-600 font-bold print:text-black">{i+1}列</div>)}
                                                     
                                                     {/* データ */}
-                                                    {lineupList.filter(l=>l.groupKey===grp).map((l, idx) => (
-                                                        <div key={idx} className={`p-2 text-center rounded border text-sm font-bold truncate ${l.team==='赤'?'bg-white text-red-600 border-red-200':'bg-white text-slate-700 border-slate-300'}`} style={{ gridColumn: l.column, gridRow: l.row + 1 }}>
-                                                            {l.name}
-                                                        </div>
-                                                    ))}
+                                                    {lineupList.filter(l=>l.groupKey===grp).map((l, idx) => {
+                                                        const isDragOver = dragOverItem && dragOverItem.groupKey === l.groupKey && dragOverItem.row === l.row && dragOverItem.column === l.column;
+                                                        return (
+                                                            <div 
+                                                                key={idx} 
+                                                                draggable
+                                                                onDragStart={(e) => onDragStart(e, 'lineup', l)}
+                                                                onDragOver={(e) => onDragOver(e, 'lineup', l)}
+                                                                onDragLeave={onDragLeave}
+                                                                onDrop={(e) => onDrop(e, 'lineup', l)}
+                                                                className={`p-2 text-center rounded border text-sm font-bold truncate cursor-grab active:cursor-grabbing transition-colors duration-75 print:bg-transparent print:border-slate-400 print:text-black print:shadow-none ${l.team==='赤'?'bg-red-50 text-red-700 border-red-200':'bg-white text-slate-700 border-slate-300'} ${isDragOver ? 'opacity-50 border-dashed border-green-500 bg-green-50' : 'hover:shadow'}`} 
+                                                                style={{ gridColumn: l.column, gridRow: l.row + 1 }}
+                                                            >
+                                                                <div className="print:text-base">{l.name}</div>
+                                                                <div className="text-[10px] font-mono text-slate-400 font-normal mt-0.5 print:hidden">{l.height > 0 ? `${l.height} cm` : '-'}</div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         ))}
