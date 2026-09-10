@@ -41,7 +41,6 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- アイコンコンポーネント (SVG) ---
         const Icons = {
             Grade: () => <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
             Class: () => <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>,
@@ -62,7 +61,6 @@
             Shield: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
         };
 
-        // --- 共通コンポーネント: 選択カード (Green Theme) ---
         const SelectionCard = ({ selected, onClick, icon: Icon, title, desc, color = "green" }) => {
             const baseClass = "cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center gap-3 transition-all duration-200 w-full";
             const activeClass = selected 
@@ -83,30 +81,20 @@
             );
         };
 
-        // パスワードモーダル
         const PasswordModal = ({ show, onClose, onSuccess }) => {
             const [inputVal, setInputVal] = useState('');
             const [error, setError] = useState('');
             const inputRef = useRef(null);
 
             useEffect(() => {
-                if (show && inputRef.current) {
-                    inputRef.current.focus();
-                }
+                if (show && inputRef.current) inputRef.current.focus();
             }, [show]);
 
             if (!show) return null;
 
             const handleExecute = () => {
-                if (inputVal === SECRET_KEY) {
-                    onSuccess();
-                } else {
-                    setError('合言葉が違います');
-                }
-            };
-
-            const handleKeyDown = (e) => {
-                if (e.key === 'Enter') handleExecute();
+                if (inputVal === SECRET_KEY) onSuccess();
+                else setError('合言葉が違います');
             };
 
             return (
@@ -114,7 +102,7 @@
                     <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Icons.Shield/> 合言葉</h3>
                         <p className="text-sm text-slate-600 mb-4">合言葉を入力してください。</p>
-                        <input ref={inputRef} type="text" className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none" placeholder="合言葉" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleKeyDown} />
+                        <input ref={inputRef} type="text" className="w-full border-2 border-slate-200 rounded-lg p-3 mb-2 focus:border-green-500 focus:outline-none" placeholder="合言葉" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleExecute()} />
                         {error && <p className="text-red-500 text-xs font-bold mb-4">{error}</p>}
                         <div className="flex justify-end gap-3 mt-4">
                             <button onClick={onClose} className="text-slate-500 font-bold px-4 py-2 hover:bg-slate-100 rounded-lg">キャンセル</button>
@@ -125,7 +113,6 @@
             );
         };
 
-        // --- 定数・サンプルデータ ---
         const PATTERNS = [
             { id: 'abba', name: '赤 白 白 赤', sub: 'ジグザグ・赤始', desc: '1位:赤, 2位:白, 3位:白, 4位:赤...' },
             { id: 'baab', name: '白 赤 赤 白', sub: 'ジグザグ・白始', desc: '1位:白, 2位:赤, 3位:赤, 4位:白...' },
@@ -174,7 +161,6 @@
 斎藤澪	2	女	9.3	134.0	
 清水彩葉	2	女	9.0	137.5	`;
 
-        /* 合言葉見つかっちゃった！降参！ご自由にお使いください。 */
         const SECRET_KEY = "ウンドウカイ";
 
         const App = () => {
@@ -210,7 +196,6 @@
 
             useEffect(() => { window.scrollTo(0, 0); }, [step]);
 
-            // --- Logic ---
             const downloadTemplate = () => {
                 const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
                 const header = "氏名,クラス,性別,タイム,身長,チーム指定(任意)\n";
@@ -225,12 +210,10 @@
                 URL.revokeObjectURL(url);
             };
 
-            // 【改修点1】見出し行の自動除外と未入力データの正しいパース
+            // 【改修】見出し行の自動除外と、未入力データ(0)を正しくパースする処理
             const parseData = (input) => {
                 if (!input) return [];
                 const lines = input.trim().split(/\r?\n/);
-                
-                // 見出し行とみなすキーワード
                 const headerKeywords = ['氏名', '名前', 'クラス', '組', '性別', 'タイム', '時間', '身長', 'チーム指定', 'チーム'];
 
                 return lines.map((line, idx) => {
@@ -240,14 +223,12 @@
                     parts = parts.map(p => p.trim());
                     if (parts.length < 2) return null;
 
-                    // 見出し行が含まれていればスキップ
                     const isHeader = parts.some(part => headerKeywords.some(kw => part.includes(kw)));
                     if (isHeader) return null;
 
                     const rawTime = parts[3];
                     const rawHeight = parts[4];
 
-                    // 0や空欄を正しく数値に変換
                     let timeVal = 0;
                     if (rawTime !== undefined && rawTime !== '') {
                         const parsed = parseFloat(rawTime);
@@ -285,9 +266,9 @@
 
             const assignTeams = () => {
                 const students = parseData(rawInput);
-                // 【改修点3】0を「999」として扱い、最後尾に回すソート処理
+                // 0（未入力）は最後尾(999)にする
                 const getSorter = () => criteria === 'time' 
-                    ? (a, b) => (a.time === 0 ? 999 : a.time) - (b.time === 0 ? 999 : b.time)
+                    ? (a, b) => (a.time === 0 ? 999 : a.time) - (b.time === 0 ? 999 : b.time) 
                     : (a, b) => (a.height === 0 ? 999 : a.height) - (b.height === 0 ? 999 : b.height);
 
                 const applyPattern = (list, patternType) => {
@@ -354,7 +335,7 @@
                     }
 
                     groups.forEach(group => {
-                        // 【改修点3-b】徒競走リストでも、0を「999」として扱い最後尾に回す
+                        // 徒競走でも0（欠席等）は最後尾にする
                         const sorted = [...group.list].sort((a, b) => (a.time === 0 ? 999 : a.time) - (b.time === 0 ? 999 : b.time));
                         let reds = sorted.filter(s => s.team === '赤');
                         let whites = sorted.filter(s => s.team === '白');
@@ -406,17 +387,17 @@
                 let lineups = [];
                 if (lineupEnabled) {
                     const sortFunc = (a, b) => {
-                        if (lineupGrouping === 'class' && a.classNum !== b.classNum) return a.classNum - b.classNum;
-                        if (lineupMode === 'separate') {
-                            const aIsBoy = /男|M/i.test(a.gender);
-                            const bIsBoy = /男|M/i.test(b.gender);
-                            if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
+                        // 1. クラス順
+                        if (lineupGrouping === 'class' && a.classNum !== b.classNum) {
+                            return String(a.classNum).localeCompare(String(b.classNum), undefined, {numeric: true});
                         }
+                        // 2. チーム順 (赤→白)
                         if (a.team !== b.team) return a.team === '赤' ? -1 : 1;
-                        const aIsBoy = /男|M/i.test(a.gender);
-                        const bIsBoy = /男|M/i.test(b.gender);
-                        if (aIsBoy !== bIsBoy) return aIsBoy ? -1 : 1;
-                        // 【改修点3-c】背の順リストでも、身長0を「999」として扱い最後尾に回す
+                        
+                        // 【修正点】ここで無条件に性別でソートするバグを削除し、純粋な身長順に。
+                        // (男女別列の場合は、後でfilterを使って列に配置するためここでの性別ソートは不要)
+                        
+                        // 3. 身長順 (0は最後尾)
                         return (a.height === 0 ? 999 : a.height) - (b.height === 0 ? 999 : b.height);
                     };
 
@@ -474,12 +455,10 @@
                 setStep(6);
             };
 
-            // --- UI Components ---
-            // 【改修点2】未入力・0データを黄色にハイライトするテーブル
             const PreviewTable = ({ inputData }) => {
                 const parsed = parseData(inputData);
                 if (parsed.length === 0) return null;
-                
+
                 const isZeroOrEmpty = (val) => val === 0 || val === '0' || val === '' || val === null || val === undefined;
 
                 return (
@@ -489,41 +468,24 @@
                                 <Icons.Check /> プレビュー (全{parsed.length}名)
                             </div>
                             <div className="text-xs bg-yellow-100 text-yellow-800 px-2.5 py-1 rounded-full border border-yellow-300 font-normal flex items-center gap-1">
-                                <span>💡 タイム・身長・クラスが「0」「未入力」の箇所は黄色で表示されます</span>
+                                <span>💡 「0」や「未入力」の箇所は黄色で表示されます</span>
                             </div>
                         </div>
                         <div className="max-h-96 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left">
                                 <thead className="bg-green-50 sticky top-0 text-xs text-green-700 uppercase shadow-sm">
-                                    <tr>
-                                        <th className="p-2 pl-4">氏名</th>
-                                        <th className="p-2">クラス</th>
-                                        <th className="p-2">性別</th>
-                                        <th className="p-2">タイム</th>
-                                        <th className="p-2">身長</th>
-                                        <th className="p-2 text-red-600">指定</th>
-                                    </tr>
+                                    <tr><th className="p-2 pl-4">氏名</th><th className="p-2">クラス</th><th className="p-2">性別</th><th className="p-2">タイム</th><th className="p-2">身長</th><th className="p-2 text-red-600">指定</th></tr>
                                 </thead>
                                 <tbody>
                                     {parsed.map((r, i) => {
-                                        const zeroClass = isZeroOrEmpty(r.classNum);
-                                        const zeroTime = isZeroOrEmpty(r.time);
-                                        const zeroHeight = isZeroOrEmpty(r.height);
                                         const highlightClass = "bg-yellow-200 font-bold text-amber-900 border-2 border-yellow-400";
-
                                         return (
                                             <tr key={i} className="border-b bg-white hover:bg-green-50 transition-colors">
                                                 <td className="p-2 pl-4 font-bold">{r.name}</td>
-                                                <td className={`p-2 rounded ${zeroClass ? highlightClass : ''}`}>
-                                                    {r.classNum}
-                                                </td>
+                                                <td className={`p-2 rounded ${isZeroOrEmpty(r.classNum) ? highlightClass : ''}`}>{r.classNum}</td>
                                                 <td className="p-2">{r.gender}</td>
-                                                <td className={`p-2 font-mono rounded ${zeroTime ? highlightClass : ''}`}>
-                                                    {r.time}
-                                                </td>
-                                                <td className={`p-2 font-mono rounded ${zeroHeight ? highlightClass : ''}`}>
-                                                    {r.height}
-                                                </td>
+                                                <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.time) ? highlightClass : ''}`}>{r.time}</td>
+                                                <td className={`p-2 font-mono rounded ${isZeroOrEmpty(r.height) ? highlightClass : ''}`}>{r.height}</td>
                                                 <td className="p-2 text-red-600 font-bold">{r.fixedTeam}</td>
                                             </tr>
                                         );
@@ -730,7 +692,6 @@
                                 <h2 className="text-xl font-bold text-green-700 border-b border-green-100 pb-4 flex items-center gap-2"><Icons.Settings/> 基本条件を設定</h2>
                                 
                                 <div className="space-y-6">
-                                    {/* 組み分け単位 */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">組み分け単位</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -738,7 +699,6 @@
                                             <SelectionCard selected={grouping==='class'} onClick={()=>setGrouping('class')} icon={Icons.Class} title="クラスごと" desc="各クラス内で均等に分けます" />
                                         </div>
                                     </div>
-                                    {/* モード */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">モード</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -746,7 +706,6 @@
                                             <SelectionCard selected={mode==='mixed'} onClick={()=>setMode('mixed')} icon={Icons.Mixed} title="男女混合" desc="性別に関係なく全体で分けます" />
                                         </div>
                                     </div>
-                                    {/* 基準 */}
                                     <div>
                                         <label className="block text-sm font-bold text-green-600 mb-3 uppercase tracking-wider">並び替え基準</label>
                                         <div className="grid grid-cols-2 gap-4">
@@ -797,7 +756,7 @@
                                         <p className="font-bold mb-1">【Excelからの列コピー順序】</p>
                                         <p className="font-mono text-xs md:text-sm whitespace-nowrap overflow-x-auto">A:氏名 | B:クラス | C:性別 | D:タイム | E:身長 | <span className="text-red-600 font-bold">F:チーム指定</span></p>
                                         <p className="text-xs text-red-500 mt-1 font-bold">※F列に『赤』『白』と入力すると、自動振り分けされずにそのチームになります。</p>
-                                        <p className="text-xs text-slate-500 mt-1">※見出し行ごと貼り付けても自動で無視されます。</p>
+                                        <p className="text-xs text-slate-500 mt-1">※見出し行ごと貼り付けても自動で除外されます。</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>setRawInput(SAMPLE_DATA)} className="text-xs bg-white text-green-600 border border-green-200 px-3 py-2 rounded shadow-sm hover:bg-green-50 font-bold">サンプル入力</button>
@@ -843,7 +802,6 @@
                                     </label>
                                     {raceEnabled && (
                                         <div className="ml-2 space-y-6 animate-fade-in">
-                                            {/* モード選択 */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">モード</label>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -868,7 +826,6 @@
                                     </label>
                                     {lineupEnabled && (
                                         <div className="ml-2 space-y-6 animate-fade-in">
-                                            {/* 単位 */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">① 並び順のグループ単位</label>
                                                 <div className="grid grid-cols-2 gap-3">
@@ -876,7 +833,6 @@
                                                     <SelectionCard selected={lineupGrouping==='grade'} onClick={()=>setLineupGrouping('grade')} icon={Icons.Grade} title="学年通し" desc="赤組全体, 白組全体" />
                                                 </div>
                                             </div>
-                                            {/* モード */}
                                             <div>
                                                 <label className="block text-xs font-bold text-green-600 mb-2 uppercase">② 並び方</label>
                                                 <div className="grid grid-cols-2 gap-3">
